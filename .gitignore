@@ -1,0 +1,15 @@
+__pycache__/
+.DS_Store
+
+MiDaS/
+CLIP/
+ResizeRight/
+pytorch3d-lite/
+guided-diffusion/
+AdaBins/
+open_clip/
+
+models/
+pretrained/
+images_out/
+init_images/
