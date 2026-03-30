@@ -1,4 +1,4 @@
-"""Disco Diffusion execution entry (script logic moved from legacy disco.py)."""
+"""Diffusion application runtime (notebook-style script body; launched via repo `disco.py`)."""
 from __future__ import annotations
 
 def main() -> None:
@@ -6,10 +6,12 @@ def main() -> None:
     import os
     import sys
 
+    print("[discodiff] Runtime starting (first pip steps can be slow; output streams live below).", flush=True)
+
     import pathlib
     import shutil
 
-    from disco_utils import (
+    from main_utils import (
         createPath,
         download_model,
         fetch,
@@ -32,8 +34,8 @@ def main() -> None:
 
     USE_ADABINS = False
 
-    # disco_xform_utils reads this before attempting AdaBins (MiDaS-only when false).
-    os.environ['DISCO_USE_ADABINS'] = '1' if USE_ADABINS else '0'
+    # main_xform_utils reads this before attempting AdaBins (MiDaS-only when false).
+    os.environ['MAIN_USE_ADABINS'] = '1' if USE_ADABINS else '0'
 
 
 
@@ -51,33 +53,43 @@ def main() -> None:
     # driver. Default PyPI torch builds may target newer CUDA runtimes than the host driver supports.
     _PYTORCH_CUDA_INDEX = 'https://download.pytorch.org/whl/cu128'
 
-    print(
-        subprocess.run(
-            ['pip', 'install', 'torch', 'torchvision', '--index-url', _PYTORCH_CUDA_INDEX],
-            stdout=subprocess.PIPE,
-        ).stdout.decode('utf-8')
+    print("[discodiff] pip: torch + torchvision (cu128 index)…", flush=True)
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "torch",
+            "torchvision",
+            "--index-url",
+            _PYTORCH_CUDA_INDEX,
+        ],
+        stderr=subprocess.STDOUT,
     )
 
-    multipip_res = subprocess.run(
+    print("[discodiff] pip: runtime dependencies…", flush=True)
+    subprocess.run(
         [
-            'pip',
-            'install',
-            'lpips',
-            'datetime',
-            'timm',
-            'ftfy',
-            'einops',
-            'pytorch-lightning',
-            'omegaconf',
-            'regex',
-            'opencv-python',
-            'pandas',
-            'requests',
-            'matplotlib',
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "lpips",
+            "datetime",
+            "timm",
+            "ftfy",
+            "einops",
+            "pytorch-lightning",
+            "omegaconf",
+            "regex",
+            "opencv-python",
+            "pandas",
+            "requests",
+            "matplotlib",
         ],
-        stdout=subprocess.PIPE,
-    ).stdout.decode('utf-8')
-    print(multipip_res)
+        stderr=subprocess.STDOUT,
+    )
 
     try:
         from CLIP import clip
@@ -132,7 +144,7 @@ def main() -> None:
 
 
 
-    # Local helpers (disco_xform_utils.py, diffusion_utils.py) are part of this repo — no upstream clone.
+    # Local helpers (main_xform_utils.py, diffusion_utils.py) are part of this repo — no upstream clone.
     sys.path.append(PROJECT_DIR)
 
     import torch
@@ -196,7 +208,7 @@ def main() -> None:
                         f"  {_adabins_pt}\n"
                         "Direct file: https://huggingface.co/deforum/AdaBins/resolve/main/AdaBins_nyu.pt\n"
                         "Repo browser: https://huggingface.co/deforum/AdaBins\n"
-                        "To disable AdaBins depth helpers, set USE_ADABINS = False near the top of disco.py.",
+                        "To disable AdaBins depth helpers, set USE_ADABINS = False near the top of src/discodiff/main.py.",
                         RuntimeWarning,
                         stacklevel=1,
                     )
@@ -325,7 +337,7 @@ def main() -> None:
 
 
     import py3d_tools as p3dT
-    import disco_xform_utils as dxf
+    import main_xform_utils as dxf
 
     import noise as _noise
 

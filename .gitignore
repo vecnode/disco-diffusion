@@ -1,6 +1,10 @@
 __pycache__/
 .DS_Store
 
+# Python environments (never commit)
+venv/
+.venv/
+
 MiDaS/
 CLIP/
 ResizeRight/

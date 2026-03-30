@@ -1,4 +1,4 @@
-"""Primary diffusion UNet load and device placement (extracted from legacy `disco.py` model block)."""
+"""Primary diffusion UNet load and device placement (extracted from legacy root script model block)."""
 
 from __future__ import annotations
 
