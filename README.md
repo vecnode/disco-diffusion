@@ -1,4 +1,4 @@
-# Disco Diffusion
+# disco-diffusion
 
 A modern refactor of disco-diffusion (ongoing).
 
@@ -9,6 +9,7 @@ A modern refactor of disco-diffusion (ongoing).
 python3 -m venv venv
 source venv/bin/activate
 python3 disco.py
+# equivalent (from repo root, with src on path): (cd src && python3 -m discodiff.main)
 ```
 
 ## Models
