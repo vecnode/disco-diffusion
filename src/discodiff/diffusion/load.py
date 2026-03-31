@@ -1,4 +1,4 @@
-"""Primary diffusion UNet load and device placement (extracted from legacy root script model block)."""
+"""Load primary UNet + diffusion schedule (checkpoint, device, fp16, trainable projector norms)."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def load_primary_diffusion_model(
     create_model_and_diffusion: Callable[..., Tuple[Any, Any]],
     get_model_filename: Callable[[str, dict[str, Any]], str],
 ) -> tuple[Any, Any]:
-    """Create UNet + diffusion, load checkpoint weights, fp16, trainable projector norms (unchanged behavior)."""
+    """Create UNet + diffusion, load weights, apply fp16 and partial requires_grad (unchanged behavior)."""
     model, diffusion = create_model_and_diffusion(**model_config)
     if diffusion_model == "custom":
         model.load_state_dict(torch.load(custom_path, map_location="cpu"))

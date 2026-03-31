@@ -952,7 +952,7 @@ def main(cli_overrides: dict | None = None) -> None:
                 cur_t -= 1
                 intermediateStep = False
                 if args.steps_per_checkpoint is not None:
-                    if j % steps_per_checkpoint == 0 and j > 0:
+                    if j % args.steps_per_checkpoint == 0 and j > 0:
                       intermediateStep = True
                 elif j in args.intermediate_saves:
                   intermediateStep = True
@@ -2075,7 +2075,8 @@ def main(cli_overrides: dict | None = None) -> None:
     else:
         steps_per_checkpoint = None
 
-    if intermediate_saves and intermediates_in_subfolder is True:
+    partialFolder = None
+    if intermediates_in_subfolder is True:
         partialFolder = f'{batchFolder}/partials'
         createPath(partialFolder)
 
@@ -2337,7 +2338,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
     print('Prepping model')
 
-    from .pipeline import load_primary_diffusion_model
+    from .diffusion import load_primary_diffusion_model
 
     model, diffusion = load_primary_diffusion_model(
         model_config=model_config,

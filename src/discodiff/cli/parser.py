@@ -1,4 +1,4 @@
-"""CLI for `disco.py`: optional overrides only (omit a flag to keep `main.py` defaults)."""
+"""Argument parsing for ``disco.py`` (optional overrides; omitted flags keep ``main.py`` defaults)."""
 
 from __future__ import annotations
 

@@ -4,6 +4,7 @@ Implements resizing via weighted samples over a projected 1D grid per dimension,
 with optional antialiasing on downscale. Based on the approach in "From Discrete
 to Continuous Convolutions" (Shocher et al.).
 """
+
 from __future__ import annotations
 
 import warnings

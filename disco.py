@@ -69,7 +69,7 @@ if _SRC_ROOT not in sys.path:
 
 print("[disco.py] Starting runtime (see pip / discodiff messages below).", flush=True)
 
-from discodiff.disco_cli import parse_disco_argv
+from discodiff.cli import parse_disco_argv
 from discodiff.main import main
 
 if __name__ == "__main__":

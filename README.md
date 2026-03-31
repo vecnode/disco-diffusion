@@ -62,8 +62,9 @@ CPU runs: set `USE_CPU = True` near the top of `src/discodiff/main.py`. On CUDA 
 `**src/discodiff/` modules**
 
 - `**main.py`** — Environment setup, third-party clones, CLIP / diffusion / MiDaS, user settings, sampling loop, optional ffmpeg video pass.
+- `**cli/parser.py`** — `disco.py` argument parsing (`discodiff.cli.parse_disco_argv`).
 - `**config.py`** — Builds run `args` as a `SimpleNamespace` from the legacy local-variable layout.
-- `**pipeline.py`** — Primary UNet + diffusion instance: checkpoint load, device, fp16 / grad flags.
+- `**diffusion/load.py`** — Primary UNet + diffusion: checkpoint load, device, fp16 / grad flags (`discodiff.diffusion`).
 - `**run.py`** — Invokes the diffusion loop wired through the `main` module.
 - `**main_utils.py`** — Git clone, wget, fetch, checkpoint download, paths.
 - `**diffusion_utils.py`** — Keyframes and prompt series (`split_prompts`, etc.).
