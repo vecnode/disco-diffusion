@@ -56,7 +56,7 @@ import os
 import subprocess
 import sys
 
-# `discodiff.main_utils` imports `requests` — install before importing the package.
+# `discodiff.assets.downloads` imports `requests` — install before importing the package.
 print("[disco.py] Ensuring requests is available for discodiff", flush=True)
 subprocess.run(
     [sys.executable, "-m", "pip", "install", "requests"],

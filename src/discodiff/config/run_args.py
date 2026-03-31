@@ -1,15 +1,15 @@
-"""Assemble `args` SimpleNamespace from legacy local variables (notebook-style globals in `main()`)."""
+"""Assemble ``args`` SimpleNamespace from legacy ``main()`` locals."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any, Mapping
 
-from .diffusion_utils import split_prompts
+from .keyframes import split_prompts
 
 
 def build_run_args_namespace(ns: Mapping[str, Any]) -> SimpleNamespace:
-    """Mirror `main()`'s original `args = { ... }; SimpleNamespace(**args)` block."""
+    """Mirror ``main()``'s original ``args = { ... }; SimpleNamespace(**args)`` block."""
     animation_mode = ns["animation_mode"]
     args: dict[str, Any] = {
         "batchNum": ns["batchNum"],

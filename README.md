@@ -59,19 +59,18 @@ CPU runs: set `USE_CPU = True` near the top of `src/discodiff/main.py`. On CUDA 
 
 **Application layout:** `**src/discodiff/`** as the `**discodiff**` package. Root `**disco.py**` prepends `src/` to `sys.path` and calls `**discodiff.main.main()**`, which still behaves like the original notebook: **pip** installs, **git clones** for missing trees, **weights** into `models/` (and paths below).
 
-`**src/discodiff/` modules**
+`**src/discodiff/` layout** (top-level `**main.py**` is the notebook-style runtime.)
 
-- `**main.py`** — Environment setup, third-party clones, CLIP / diffusion / MiDaS, user settings, sampling loop, optional ffmpeg video pass.
-- `**cli/parser.py`** — `disco.py` argument parsing (`discodiff.cli.parse_disco_argv`).
-- `**config.py`** — Builds run `args` as a `SimpleNamespace` from the legacy local-variable layout.
-- `**diffusion/load.py`** — Primary UNet + diffusion: checkpoint load, device, fp16 / grad flags (`discodiff.diffusion`).
-- `**run.py`** — Invokes the diffusion loop wired through the `main` module.
-- `**main_utils.py`** — Git clone, wget, fetch, checkpoint download, paths.
-- `**diffusion_utils.py`** — Keyframes and prompt series (`split_prompts`, etc.).
-- `**noise.py`** — Perlin initialization.
-- `**main_xform_utils.py`** — 3D warping / depth (MiDaS; optional AdaBins when enabled).
-- `**cuda_setup.py`** — Linux platform notice; CUDA startup logging; optional TF32 / cuDNN benchmark via env vars.
-- `**resize_v2.py`** — Continuous-domain image resize (NumPy / PyTorch); used by cutouts and related paths. No external clone.
+- `**main.py`** — Active entry body: environment, clones, CLIP / diffusion / MiDaS, settings, `do_run` sampling loop.
+- `**app/entrypoint.py`** — `**discodiff.run()**` → delegates to `**main.main()**` (also exported from `**discodiff.__init__**`).
+- `**cli/parser.py`** — `disco.py` flags → override dict (`**discodiff.cli.parse_disco_argv**`).
+- `**config/run_args.py`** — `**build_run_args_namespace**`; `**config/keyframes.py`** — `split_prompts`, keyframe parsing; `**config/defaults.py`** reserved for future defaults.
+- `**diffusion/**` — `**load.py**` (UNet load), `**schedules.py**` (DDIM string / step count), `**sampling.py`** (placeholder for loop extraction).
+- `**guidance/clip_cuts.py`** — Placeholder for CLIP cutouts / `cond_fn` extraction.
+- `**platform/cuda.py`** — Linux notice, CUDA logging, TF32 / cuDNN env toggles.
+- `**assets/**` — `**downloads.py**` (git, wget, fetch, checkpoint download), `**paths.py**` (`createPath`).
+- `**image/**` — `**resize.py**`, `**noise.py**` (Perlin).
+- `**geometry/warp.py`** — 3D / depth warp (MiDaS; optional AdaBins).
 
 ### Mandatory third-party code (cloned beside the project if missing)
 

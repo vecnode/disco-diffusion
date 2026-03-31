@@ -1,5 +1,6 @@
-"""Disco Diffusion application package (lives under ``src/``). ``main()`` runs the full pipeline."""
+"""Disco Diffusion package (``src/discodiff``)."""
 
-from discodiff.main import main
+from .app.entrypoint import run
+from .main import main
 
-__all__ = ["main"]
+__all__ = ["main", "run"]

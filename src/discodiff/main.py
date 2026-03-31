@@ -8,14 +8,14 @@ def main(cli_overrides: dict | None = None) -> None:
 
     print("[discodiff] Runtime starting (first pip steps can be slow; output streams live below).", flush=True)
 
-    from .cuda_setup import warn_if_non_linux_platform
+    from .platform.cuda import warn_if_non_linux_platform
 
     warn_if_non_linux_platform()
 
     import pathlib
     import shutil
 
-    from .main_utils import (
+    from .assets import (
         createPath,
         download_model,
         fetch,
@@ -38,7 +38,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
     USE_ADABINS = False
 
-    # main_xform_utils reads this before attempting AdaBins (MiDaS-only when false).
+    # geometry.warp reads MAIN_USE_ADABINS before attempting AdaBins (MiDaS-only when false).
     os.environ['MAIN_USE_ADABINS'] = '1' if USE_ADABINS else '0'
 
 
@@ -119,7 +119,7 @@ def main(cli_overrides: dict | None = None) -> None:
         sys.path.append(f'{PROJECT_DIR}/guided-diffusion')
         from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
-    from .resize_v2 import resize
+    from .image.resize import resize
 
     try:
         import py3d_tools
@@ -142,7 +142,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
 
 
-    # Package helpers (discodiff.main_xform_utils, discodiff.diffusion_utils) — no upstream clone.
+    # Package helpers (geometry.warp, config.keyframes) — no upstream clone.
     sys.path.append(PROJECT_DIR)
 
     import torch
@@ -226,7 +226,7 @@ def main(cli_overrides: dict | None = None) -> None:
             print('Disabling CUDNN for A100 gpu', file=sys.stderr)
             torch.backends.cudnn.enabled = False
 
-    from .cuda_setup import apply_env_tf32, log_cuda_device
+    from .platform.cuda import apply_env_tf32, log_cuda_device
 
     if not USE_CPU and DEVICE.type == 'cuda':
         log_cuda_device(DEVICE)
@@ -339,9 +339,9 @@ def main(cli_overrides: dict | None = None) -> None:
 
 
     import py3d_tools as p3dT
-    from . import main_xform_utils as dxf
+    from .geometry import warp as dxf
 
-    from . import noise as _noise
+    from .image import noise as _noise
 
 
     def read_image_workaround(path):
@@ -597,7 +597,7 @@ def main(cli_overrides: dict | None = None) -> None:
         return x
 
     def do_run():
-      from .cuda_setup import use_cudnn_benchmark_mode
+      from .platform.cuda import use_cudnn_benchmark_mode
 
       _cudnn_benchmark = use_cudnn_benchmark_mode()
       seed = args.seed
@@ -1531,7 +1531,7 @@ def main(cli_overrides: dict | None = None) -> None:
     clip_guidance_scale = 5000 
     tv_scale = 0
     range_scale = 10
-    sat_scale = 0
+    sat_scale = 500 # 0 off
     cutn_batches = 4
     cutn = 16
     skip_augs = False
@@ -1708,7 +1708,7 @@ def main(cli_overrides: dict | None = None) -> None:
         vr_mode = False
 
 
-    from .diffusion_utils import get_inbetweens, parse_key_frames, split_prompts
+    from .config.keyframes import get_inbetweens, parse_key_frames, split_prompts
 
 
     if key_frames:
@@ -2254,8 +2254,14 @@ def main(cli_overrides: dict | None = None) -> None:
     _apply_cli_overrides(cli_overrides)
 
     #Update Model Settings
-    timestep_respacing = f'ddim{steps}'
-    diffusion_steps = (1000//steps)*steps if steps < 1000 else steps
+    from .diffusion import (
+        diffusion_steps_count,
+        load_primary_diffusion_model,
+        timestep_respacing_ddim,
+    )
+
+    timestep_respacing = timestep_respacing_ddim(steps)
+    diffusion_steps = diffusion_steps_count(steps)
     model_config.update({
         'timestep_respacing': timestep_respacing,
         'diffusion_steps': diffusion_steps,
@@ -2338,8 +2344,6 @@ def main(cli_overrides: dict | None = None) -> None:
 
     print('Prepping model')
 
-    from .diffusion import load_primary_diffusion_model
-
     model, diffusion = load_primary_diffusion_model(
         model_config=model_config,
         diffusion_model=diffusion_model,
@@ -2353,14 +2357,13 @@ def main(cli_overrides: dict | None = None) -> None:
     from . import main as _main_pub
 
     _main_pub.do_run = do_run
-    from .run import invoke_diffusion
 
     try:
-        invoke_diffusion()
+        do_run()
     except KeyboardInterrupt:
         pass
     except RuntimeError as exc:
-        from .cuda_setup import format_cuda_oom_hint
+        from .platform.cuda import format_cuda_oom_hint
 
         if DEVICE.type == "cuda" and "out of memory" in str(exc).lower():
             print(format_cuda_oom_hint(), file=sys.stderr)

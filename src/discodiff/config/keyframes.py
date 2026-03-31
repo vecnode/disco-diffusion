@@ -123,5 +123,3 @@ def split_prompts(prompts, max_frames):
         prompt_series.loc[i] = prompt
     prompt_series = prompt_series.ffill().bfill()
     return prompt_series
-
-
