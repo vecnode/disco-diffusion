@@ -121,12 +121,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
     from .image.resize import resize
 
-    try:
-        import py3d_tools
-    except:
-        if not os.path.exists('pytorch3d-lite'):
-            gitclone("https://github.com/MSFTserver/pytorch3d-lite.git")
-        sys.path.append(f'{PROJECT_DIR}/pytorch3d-lite')
+    from .geometry import py3d_tools
 
     try:
         from midas.dpt_depth import DPTDepthModel
@@ -338,7 +333,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
 
 
-    import py3d_tools as p3dT
+    from .geometry import py3d_tools as p3dT
     from .geometry import warp as dxf
 
     from .image import noise as _noise
@@ -643,7 +638,7 @@ def main(cli_overrides: dict | None = None) -> None:
               if resume_run and frame_num == start_frame:
                 img_0 = cv2.imread(batchFolder+f"/{batch_name}({batchNum})_{start_frame-1:04}.png")
               else:
-                img_0 = cv2.imread('prevFrame.png')
+                img_0 = cv2.imread(prev_frame_path)
               center = (1*img_0.shape[1]//2, 1*img_0.shape[0]//2)
               trans_mat = np.float32(
                   [[1, 0, translation_x],
@@ -660,8 +655,8 @@ def main(cli_overrides: dict | None = None) -> None:
                   borderMode=cv2.BORDER_WRAP
               )
 
-              cv2.imwrite('prevFrameScaled.png', img_0)
-              init_image = 'prevFrameScaled.png'
+              cv2.imwrite(prev_frame_scaled_path, img_0)
+              init_image = prev_frame_scaled_path
               init_scale = args.frames_scale
               skip_steps = args.calc_frames_skip_steps
 
@@ -671,28 +666,28 @@ def main(cli_overrides: dict | None = None) -> None:
               if resume_run and frame_num == start_frame:
                 img_filepath = batchFolder+f"/{batch_name}({batchNum})_{start_frame-1:04}.png"
                 if turbo_mode and frame_num > turbo_preroll:
-                  shutil.copyfile(img_filepath, 'oldFrameScaled.png')
+                  shutil.copyfile(img_filepath, old_frame_scaled_path)
               else:
-                img_filepath = 'prevFrame.png'
+                img_filepath = prev_frame_path
 
               next_step_pil = do_3d_step(img_filepath, frame_num, midas_model, midas_transform)
-              next_step_pil.save('prevFrameScaled.png')
+              next_step_pil.save(prev_frame_scaled_path)
 
               ### Turbo mode - skip some diffusions, use 3d morph for clarity and to save time
               if turbo_mode:
                 if frame_num == turbo_preroll: #start tracking oldframe
-                  next_step_pil.save('oldFrameScaled.png')#stash for later blending          
+                  next_step_pil.save(old_frame_scaled_path)#stash for later blending          
                 elif frame_num > turbo_preroll:
                   #set up 2 warped image sequences, old & new, to blend toward new diff image
-                  old_frame = do_3d_step('oldFrameScaled.png', frame_num, midas_model, midas_transform)
-                  old_frame.save('oldFrameScaled.png')
+                  old_frame = do_3d_step(old_frame_scaled_path, frame_num, midas_model, midas_transform)
+                  old_frame.save(old_frame_scaled_path)
                   if frame_num % int(turbo_steps) != 0: 
                     print('turbo skip this frame: skipping clip diffusion steps')
                     filename = f'{args.batch_name}({args.batchNum})_{frame_num:04}.png'
                     blend_factor = ((frame_num % int(turbo_steps))+1)/int(turbo_steps)
                     print('turbo skip this frame: skipping clip diffusion steps and saving blended frame')
-                    newWarpedImg = cv2.imread('prevFrameScaled.png')#this is already updated..
-                    oldWarpedImg = cv2.imread('oldFrameScaled.png')
+                    newWarpedImg = cv2.imread(prev_frame_scaled_path)#this is already updated..
+                    oldWarpedImg = cv2.imread(old_frame_scaled_path)
                     blendedImage = cv2.addWeighted(newWarpedImg, blend_factor, oldWarpedImg,1-blend_factor, 0.0)
                     cv2.imwrite(f'{batchFolder}/{filename}',blendedImage)
                     next_step_pil.save(f'{img_filepath}') # save it also as prev_frame to feed next iteration
@@ -701,11 +696,11 @@ def main(cli_overrides: dict | None = None) -> None:
                     continue
                   else:
                     #if not a skip frame, will run diffusion and need to blend.
-                    oldWarpedImg = cv2.imread('prevFrameScaled.png')
-                    cv2.imwrite(f'oldFrameScaled.png',oldWarpedImg)#swap in for blending later 
+                    oldWarpedImg = cv2.imread(prev_frame_scaled_path)
+                    cv2.imwrite(old_frame_scaled_path,oldWarpedImg)#swap in for blending later 
                     print('clip/diff this frame - generate clip diff image')
 
-              init_image = 'prevFrameScaled.png'
+              init_image = prev_frame_scaled_path
               init_scale = args.frames_scale
               skip_steps = args.calc_frames_skip_steps
 
@@ -976,7 +971,7 @@ def main(cli_overrides: dict | None = None) -> None:
                                 filename = f'{args.batch_name}({args.batchNum})_{i:04}-{j:03}.png'
                           image = TF.to_pil_image(image.add(1).div(2).clamp(0, 1))
                           if j % args.display_rate == 0 or cur_t == -1:
-                            image.save('progress.png')
+                            image.save(progress_path)
                           if args.steps_per_checkpoint is not None:
                             if j % args.steps_per_checkpoint == 0 and j > 0:
                               if args.intermediates_in_subfolder is True:
@@ -993,15 +988,15 @@ def main(cli_overrides: dict | None = None) -> None:
                             if frame_num == 0:
                               save_settings()
                             if args.animation_mode != "None":
-                              image.save('prevFrame.png')
+                              image.save(prev_frame_path)
                             image.save(f'{batchFolder}/{filename}')
                             if args.animation_mode == "3D":
                               # If turbo, save a blended image
                               if turbo_mode and frame_num > 0:
                                 # Mix new image with prevFrameScaled
                                 blend_factor = (1)/int(turbo_steps)
-                                newFrame = cv2.imread('prevFrame.png') # This is already updated..
-                                prev_frame_warped = cv2.imread('prevFrameScaled.png')
+                                newFrame = cv2.imread(prev_frame_path) # This is already updated..
+                                prev_frame_warped = cv2.imread(prev_frame_scaled_path)
                                 blendedImage = cv2.addWeighted(newFrame, blend_factor, prev_frame_warped, (1-blend_factor), 0.0)
                                 cv2.imwrite(f'{batchFolder}/{filename}',blendedImage)
                               else:
@@ -1571,6 +1566,13 @@ def main(cli_overrides: dict | None = None) -> None:
     batchFolder = f'{outputDirPath}/{batch_name}'
     createPath(batchFolder)
 
+    runtimeFolder = f"{batchFolder}/runtime"
+    createPath(runtimeFolder)
+    progress_path = f"{runtimeFolder}/progress.png"
+    prev_frame_path = f"{runtimeFolder}/prevFrame.png"
+    prev_frame_scaled_path = f"{runtimeFolder}/prevFrameScaled.png"
+    old_frame_scaled_path = f"{runtimeFolder}/oldFrameScaled.png"
+
 
 
     """
@@ -1617,7 +1619,7 @@ def main(cli_overrides: dict | None = None) -> None:
             subprocess.run(['ffmpeg', '-i', f'{video_init_path}', '-vf', f'{vf}', '-vsync', 'vfr', '-q:v', '2', '-loglevel', 'error', '-stats', f'{videoFramesFolder}/%04d.jpg'], stdout=subprocess.PIPE).stdout.decode('utf-8')
         else: 
             print(f'\nWARNING!\n\nVideo not found: {video_init_path}.\nPlease check your video path.\n')
-        #!ffmpeg -i {video_init_path} -vf {vf} -vsync vfr -q:v 2 -loglevel error -stats {videoFramesFolder}/%04d.jpg
+        # !ffmpeg -i {video_init_path} -vf {vf} -vsync vfr -q:v 2 -loglevel error -stats {videoFramesFolder}/%04d.jpg
 
 
 
