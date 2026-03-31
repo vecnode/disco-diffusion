@@ -10,7 +10,7 @@ from .keyframes import split_prompts
 
 def build_run_args_namespace(ns: Mapping[str, Any]) -> SimpleNamespace:
     """Mirror ``main()``'s original ``args = { ... }; SimpleNamespace(**args)`` block."""
-    animation_mode = ns["animation_mode"]
+    animation_mode = ns["GENERATION_MODE"]
     args: dict[str, Any] = {
         "batchNum": ns["batchNum"],
         "prompts_series": split_prompts(ns["text_prompts"], ns["max_frames"])

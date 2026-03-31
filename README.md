@@ -15,6 +15,8 @@ python3 disco.py
 cd src && python3 -m discodiff.main
 ```
 
+#### Text-to-image 
+
 ```sh
 # 1) Baseline — square 512×512, prompt via stdin JSON
 python3 disco.py --width 512 --height 512 --text-prompts-json /dev/stdin <<'EOF'
@@ -30,17 +32,27 @@ python3 disco.py --width 1024 --height 576 --set-seed 42 --steps 250 \
 EOF
 ```
 
+#### Text-to-video (2D)
+
 ```sh
-# 3) Same resolution and prompt, stronger CLIP adherence and lower DDIM eta
-python3 disco.py --width 512 --height 512 --clip-guidance-scale 6500 --eta 0.5 \
+# Example A — single resolution, two prompts (holds last prompt after frame 30)
+python3 disco.py --generation-mode 2D --width 512 --height 512 --set-seed 42 --steps 100 \
   --text-prompts-json /dev/stdin <<'EOF'
-{"0": ["trees and a beautiful field of the mountain"]}
+{"0": ["establishing shot of a coastal lighthouse at dawn, atmospheric"], "30": ["same scene, golden hour, warm light on the cliffs"]}
+EOF
+```
+
+```sh
+# Example B — higher spatial resolution, explicit multi-step schedule (adjust `max_frames` in main when producing longer sequences)
+python3 disco.py --generation-mode 2D --width 1024 --height 576 --set-seed 42 --steps 250 \
+  --text-prompts-json /dev/stdin <<'EOF'
+{"0": ["wide landscape, mountains and a field, misty morning"], "15": ["camera slowly dollying forward, same environment, sharper detail"]}
 EOF
 ```
 
 ## Platform
 
-**Linux only.** This repo is maintained and expected to run on **glibc-based Linux** with a working **NVIDIA stack** (proprietary driver so `nvidia-smi` reports your GPU). Other OSes are out of scope; if you run elsewhere, you may see a stderr warning — set `DISCO_ALLOW_NON_LINUX=1` to suppress it (still unsupported).
+**Linux tested.** This repo is maintained and expected to run on **glibc-based Linux** with a working **NVIDIA stack** (proprietary driver so `nvidia-smi` reports your GPU). Other OSes are currently out of scope; if you run elsewhere, you may see a stderr warning — set `DISCO_ALLOW_NON_LINUX=1` to suppress it (still unsupported).
 
 ## GPU (NVIDIA on Linux)
 
@@ -55,7 +67,7 @@ EOF
 
 CPU runs: set `USE_CPU = True` near the top of `src/discodiff/main.py`. On CUDA OOM, a short hint is printed to stderr.
 
-## Libraries and models
+## Libraries
 
 **Application layout:** `**src/discodiff/`** as the `**discodiff**` package. Root `**disco.py**` prepends `src/` to `sys.path` and calls `**discodiff.main.main()**`, which still behaves like the original notebook: **pip** installs, **git clones** for missing trees, **weights** into `models/` (and paths below).
 
@@ -72,26 +84,3 @@ CPU runs: set `USE_CPU = True` near the top of `src/discodiff/main.py`. On CUDA 
 - `**image/**` — `**resize.py**`, `**noise.py**` (Perlin).
 - `**geometry/warp.py`** — 3D / depth warp (MiDaS; optional AdaBins).
 
-### Mandatory third-party code (cloned beside the project if missing)
-
-- **guided-diffusion** — OpenAI DDPM/ADM (`create_model_and_diffusion`). Location: `./guided-diffusion/`.
-- **CLIP** — `CLIP.clip` text/image encoders. Location: `./CLIP/`; ViT/RN weights often under `~/.cache/torch`.
-- **pytorch3d-lite** — `py3d_tools` (3D). Location: `./pytorch3d-lite/`.
-- **MiDaS** — Depth for 3D / warp. Location: `./MiDaS/`.
-
-### Mandatory weights (default configuration)
-
-- **Primary UNet** (default `512x512_diffusion_uncond_finetune_008100`) — `models/*.pt` per `diff_model_map`.
-- **Secondary model** (when enabled) — `secondary_model_imagenet_2.pth` → `models/`.
-- **MiDaS DPT Large** (default) — e.g. `dpt_large-midas-2f21e586.pt` → `models/`.
-
-You also need **PyTorch**, **torchvision**, and dependencies the script installs (e.g. `lpips`, `timm`, `opencv-python`, `pandas`).
-
-### Optional third-party / weights
-
-- **AdaBins** — Enable with `**USE_ADABINS = True`** in `src/discodiff/main.py` (default `**False**`). `./AdaBins/`; `AdaBins_nyu.pt` → `pretrained/` ([deforum/AdaBins](https://huggingface.co/deforum/AdaBins)); env `**MAIN_USE_ADABINS**` follows that flag.
-- **open_clip** — When OpenCLIP options are enabled in `main.py`. `./open_clip/`; weights when the model is first built.
-- **Other diffusion checkpoints** — `diffusion_model` keys in `diff_model_map` in `main.py`; extra `.pt` files under `models/`.
-- **RAFT** — When `animation_mode == 'Video Input'`. `./RAFT/`; `raft-things.pth` (see `RAFT/download_models.sh`).
-- **Custom UNet** — When `diffusion_model == 'custom'`; path in `custom_path`.
-- **Other MiDaS checkpoints** — When `midas_depth_model` ≠ `dpt_large`; matching `.pt` in `models/` per `main.py`.

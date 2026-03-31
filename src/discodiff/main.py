@@ -965,7 +965,7 @@ def main(cli_overrides: dict | None = None) -> None:
                           if args.n_batches > 0:
                             #if intermediates are saved to the subfolder, don't append a step or percentage to the name
                             if cur_t == -1 and args.intermediates_in_subfolder is True:
-                              save_num = f'{frame_num:04}' if animation_mode != "None" else i
+                              save_num = f'{frame_num:04}' if GENERATION_MODE != "None" else i
                               filename = f'{args.batch_name}({args.batchNum})_{save_num}.png'
                             else:
                               #If we're working with percentages, append it
@@ -1578,7 +1578,11 @@ def main(cli_overrides: dict | None = None) -> None:
     """
 
 
-    animation_mode = 'None' # ['None', '2D', '3D', 'Video Input']
+    GENERATION_MODE = "None"  # Literal: "None" | "2D" | "3D" | "Video Input"
+    _disc_go_mode = os.environ.get("DISCO_GENERATION_MODE", "").strip()
+    if _disc_go_mode:
+        GENERATION_MODE = _disc_go_mode
+
 
 
 
@@ -1596,7 +1600,7 @@ def main(cli_overrides: dict | None = None) -> None:
     video_init_check_consistency = False #Insert param here when ready
     video_init_blend_mode = "optical flow" # ['None', 'linear', 'optical flow']
     # Call optical flow from video frames and warp prev frame with flow
-    if animation_mode == "Video Input":
+    if GENERATION_MODE == "Video Input":
         if persistent_frame_output_in_batch_folder:
             videoFramesFolder = f'{batchFolder}/videoFrames'
         else:
@@ -1625,7 +1629,7 @@ def main(cli_overrides: dict | None = None) -> None:
     key_frames = True
     max_frames = 10000
 
-    if animation_mode == "Video Input":
+    if GENERATION_MODE == "Video Input":
         max_frames = len(glob(f'{videoFramesFolder}/*.jpg'))
 
     interp_spline = 'Linear' #Do not change, currently will not look good. param ['Linear','Quadratic','Cubic']{type:"string"}
@@ -1657,7 +1661,7 @@ def main(cli_overrides: dict | None = None) -> None:
     turbo_preroll = 10 # frames
 
     # Insist that turbo be used only with 3D anim.
-    if turbo_mode and animation_mode != '3D':
+    if turbo_mode and GENERATION_MODE != '3D':
         print('=====')
         print('Turbo mode only available with 3D animations. Disabling Turbo.')
         print('=====')
@@ -1673,14 +1677,14 @@ def main(cli_overrides: dict | None = None) -> None:
     frames_scale = 1500 
 
     #@markdown `frame_skip_steps` will blur the previous frame - higher values will flicker less but struggle to add enough new detail to zoom into.
-    frames_skip_steps = '60%' #@param ['40%', '50%', '60%', '70%', '80%'] {type: 'string'}
+    frames_skip_steps = '60%' #  ['40%', '50%', '60%', '70%', '80%'] {type: 'string'}
 
     # Video Init Coherency Settings
 
     # `frame_scale` tries to guide the new frame to looking like the old one. A good default is 1500.
     video_init_frames_scale = 15000 
     # `frame_skip_steps` will blur the previous frame - higher values will flicker less but struggle to add enough new detail to zoom into.
-    video_init_frames_skip_steps = '70%' #@param ['40%', '50%', '60%', '70%', '80%'] {type: 'string'}
+    video_init_frames_skip_steps = '70%' #  ['40%', '50%', '60%', '70%', '80%'] {type: 'string'}
 
     #======= VR MODE
 
@@ -1701,7 +1705,7 @@ def main(cli_overrides: dict | None = None) -> None:
     vr_ipd = 5.0 
 
     #insist VR be used only w 3d anim.
-    if vr_mode and animation_mode != '3D':
+    if vr_mode and GENERATION_MODE != '3D':
         print('=====')
         print('VR mode only available with 3D animations. Disabling VR.')
         print('=====')
@@ -1838,7 +1842,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
 
     force_download = False
-    if animation_mode == 'Video Input':
+    if GENERATION_MODE == 'Video Input':
         try:
             from raft import RAFT
         except:
@@ -1857,7 +1861,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
     # Define optical flow functions for Video input animation mode only
 
-    if animation_mode == 'Video Input':
+    if GENERATION_MODE == 'Video Input':
         in_path = videoFramesFolder
         flo_folder = f'{in_path}/out_flo_fwd'
         path = f'{PROJECT_DIR}/RAFT/core'
@@ -1995,7 +1999,7 @@ def main(cli_overrides: dict | None = None) -> None:
     # Generate optical flow and consistency maps
     # Run once per init video
 
-    if animation_mode == "Video Input":
+    if GENERATION_MODE == "Video Input":
         import gc
 
         force_flow_generation = False
@@ -2005,7 +2009,7 @@ def main(cli_overrides: dict | None = None) -> None:
         if not video_init_flow_warp:
             print('video_init_flow_warp not set, skipping')
 
-        if (animation_mode == 'Video Input') and (video_init_flow_warp):
+        if (GENERATION_MODE == 'Video Input') and (video_init_flow_warp):
             flows = glob(flo_folder+'/*.*')
             if (len(flows)>0) and not force_flow_generation:
                 print(f'Skipping flow generation:\nFound {len(flows)} existing flow files in current working folder: {flo_folder}.\nIf you wish to generate new flow files, check force_flow_generation and run this cell again.')
@@ -2147,7 +2151,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
     """
     ### Prompts
-    `animation_mode: None` will only use the first set. `animation_mode: 2D / Video` will run through them per the set frames and hold on the last one.
+    When GENERATION_MODE is "None", only the first prompt set is used. For "2D" or video modes, prompts advance per frame and hold on the last defined frame.
     """
 
 
@@ -2173,7 +2177,7 @@ def main(cli_overrides: dict | None = None) -> None:
     display_rate = 20
     n_batches = 50
 
-    if animation_mode == 'Video Input':
+    if GENERATION_MODE == 'Video Input':
         steps = video_init_steps
 
     def _apply_cli_overrides(ov: dict | None) -> None:
@@ -2183,9 +2187,11 @@ def main(cli_overrides: dict | None = None) -> None:
         nonlocal fuzzy_prompt, rand_mag, eta, use_vertical_symmetry, use_horizontal_symmetry
         nonlocal transformation_percent, video_init_flow_warp, video_init_flow_blend
         nonlocal video_init_check_consistency, text_prompts, image_prompts
-        nonlocal width_height, side_x, side_y, steps
+        nonlocal width_height, side_x, side_y, steps, GENERATION_MODE
         if not ov:
             return
+        if "GENERATION_MODE" in ov:
+            GENERATION_MODE = ov["GENERATION_MODE"]
         if "clip_guidance_scale" in ov:
             clip_guidance_scale = ov["clip_guidance_scale"]
         if "tv_scale" in ov:
@@ -2291,7 +2297,7 @@ def main(cli_overrides: dict | None = None) -> None:
     skip_step_ratio = int(frames_skip_steps.rstrip("%")) / 100
     calc_frames_skip_steps = math.floor(steps * skip_step_ratio)
 
-    if animation_mode == 'Video Input':
+    if GENERATION_MODE == 'Video Input':
         frames = sorted(glob(in_path+'/*.*'));
         if len(frames)==0: 
             sys.exit("ERROR: 0 frames found.\nPlease check your video input path and rerun the video settings cell.")
@@ -2312,11 +2318,11 @@ def main(cli_overrides: dict | None = None) -> None:
             batchNum = int(run_to_resume)
         if resume_from_frame == 'latest':
             start_frame = len(glob(batchFolder+f"/{batch_name}({batchNum})_*.png"))
-            if animation_mode != '3D' and turbo_mode == True and start_frame > turbo_preroll and start_frame % int(turbo_steps) != 0:
+            if GENERATION_MODE != '3D' and turbo_mode == True and start_frame > turbo_preroll and start_frame % int(turbo_steps) != 0:
                 start_frame = start_frame - (start_frame % int(turbo_steps))
         else:
             start_frame = int(resume_from_frame)+1
-            if animation_mode != '3D' and turbo_mode == True and start_frame > turbo_preroll and start_frame % int(turbo_steps) != 0:
+            if GENERATION_MODE != '3D' and turbo_mode == True and start_frame > turbo_preroll and start_frame % int(turbo_steps) != 0:
                 start_frame = start_frame - (start_frame % int(turbo_steps))
             if retain_overwritten_frames is True:
                 existing_frames = len(glob(batchFolder+f"/{batch_name}({batchNum})_*.png"))
@@ -2384,7 +2390,7 @@ def main(cli_overrides: dict | None = None) -> None:
     # Create video
     # Video file will save in the same folder as your images.
 
-    if animation_mode == 'Video Input':
+    if GENERATION_MODE == 'Video Input':
         frames = sorted(glob(in_path+'/*.*'));
         if len(frames)==0: 
             sys.exit("ERROR: 0 frames found.\nPlease check your video input path and rerun the video settings cell.")
@@ -2417,7 +2423,7 @@ def main(cli_overrides: dict | None = None) -> None:
     image_path = f"{outputDirPath}/{folder}/{folder}({run})_%04d.png"
     filepath = f"{outputDirPath}/{folder}/{folder}({run}).mp4"
 
-    if (video_init_blend_mode == 'optical flow') and (animation_mode == 'Video Input'):
+    if (video_init_blend_mode == 'optical flow') and (GENERATION_MODE == 'Video Input'):
         image_path = f"{outputDirPath}/{folder}/flow/{folder}({run})_%04d.png"
         filepath = f"{outputDirPath}/{folder}/{folder}({run})_flow.mp4"
         if last_frame == 'final_frame':

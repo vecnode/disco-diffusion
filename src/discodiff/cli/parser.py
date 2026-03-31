@@ -131,6 +131,14 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         metavar="PX",
         help="Output height (use with --width)",
     )
+    p.add_argument(
+        "--generation-mode",
+        type=str,
+        dest="generation_mode",
+        choices=("None", "2D", "3D", "Video Input"),
+        metavar="MODE",
+        help='Pipeline mode (same as GENERATION_MODE in main.py). Overrides DISCO_GENERATION_MODE.',
+    )
 
     ns = p.parse_args(argv)
     ov: dict[str, Any] = {}
@@ -183,5 +191,8 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         if ns.output_width is None or ns.output_height is None:
             p.error("--width and --height must be given together")
         ov["width_height"] = [ns.output_width, ns.output_height]
+
+    if ns.generation_mode is not None:
+        ov["GENERATION_MODE"] = ns.generation_mode
 
     return ov
