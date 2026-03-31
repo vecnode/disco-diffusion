@@ -56,8 +56,8 @@ import os
 import subprocess
 import sys
 
-# `main_utils` imports `requests` — install before importing project helpers.
-print("[disco.py] Ensuring requests is available for main_utils…", flush=True)
+# `discodiff.main_utils` imports `requests` — install before importing the package.
+print("[disco.py] Ensuring requests is available for discodiff", flush=True)
 subprocess.run(
     [sys.executable, "-m", "pip", "install", "requests"],
     stderr=subprocess.STDOUT,

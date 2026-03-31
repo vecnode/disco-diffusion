@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, Mapping
 
-from diffusion_utils import split_prompts
+from .diffusion_utils import split_prompts
 
 
 def build_run_args_namespace(ns: Mapping[str, Any]) -> SimpleNamespace:

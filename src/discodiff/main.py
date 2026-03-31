@@ -11,7 +11,7 @@ def main() -> None:
     import pathlib
     import shutil
 
-    from main_utils import (
+    from .main_utils import (
         createPath,
         download_model,
         fetch,
@@ -144,7 +144,7 @@ def main() -> None:
 
 
 
-    # Local helpers (main_xform_utils.py, diffusion_utils.py) are part of this repo — no upstream clone.
+    # Package helpers (discodiff.main_xform_utils, discodiff.diffusion_utils) — no upstream clone.
     sys.path.append(PROJECT_DIR)
 
     import torch
@@ -337,9 +337,9 @@ def main() -> None:
 
 
     import py3d_tools as p3dT
-    import main_xform_utils as dxf
+    from . import main_xform_utils as dxf
 
-    import noise as _noise
+    from . import noise as _noise
 
 
     def read_image_workaround(path):
@@ -1697,7 +1697,7 @@ def main() -> None:
         vr_mode = False
 
 
-    from diffusion_utils import get_inbetweens, parse_key_frames, split_prompts
+    from .diffusion_utils import get_inbetweens, parse_key_frames, split_prompts
 
 
     if key_frames:

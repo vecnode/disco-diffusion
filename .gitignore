@@ -17,3 +17,5 @@ models/
 pretrained/
 images_out/
 init_images/
+
+progress.png

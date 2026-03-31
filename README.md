@@ -9,40 +9,47 @@ A modern refactor of disco-diffusion (ongoing).
 python3 -m venv venv
 source venv/bin/activate
 python3 disco.py
-# equivalent: (cd src && python3 -m discodiff.main)
+# equivalent:
+cd src && python3 -m discodiff.main
 ```
 
-## Models
+## Libraries and models
 
-`disco.py` clones missing **code** into the project directory and downloads **weights** into `models/` (and a few other paths). Defaults assume the 512×512 OpenAI-class UNet plus secondary + CLIP + MiDaS.
+**Application layout:** **`src/discodiff/`** as the **`discodiff`** package. Root **`disco.py`** prepends `src/` to `sys.path` and calls **`discodiff.main.main()`**, which still behaves like the original notebook: **pip** installs, **git clones** for missing trees, **weights** into `models/` (and paths below).
 
-### Mandatory
+**`src/discodiff/` modules**
 
+- **`main.py`** — Environment setup, third-party clones, CLIP / diffusion / MiDaS, user settings, sampling loop, optional ffmpeg video pass.
+- **`config.py`** — Builds run `args` as a `SimpleNamespace` from the legacy local-variable layout.
+- **`pipeline.py`** — Primary UNet + diffusion instance: checkpoint load, device, fp16 / grad flags.
+- **`run.py`** — Invokes the diffusion loop wired through the `main` module.
+- **`main_utils.py`** — Git clone, wget, fetch, checkpoint download, paths.
+- **`diffusion_utils.py`** — Keyframes and prompt series (`split_prompts`, etc.).
+- **`noise.py`** — Perlin initialization.
+- **`main_xform_utils.py`** — 3D warping / depth (MiDaS; optional AdaBins when enabled).
 
-| Block/Model                | What                                                                        | Where                                                                                        |
-| -------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| **guided-diffusion**       | OpenAI DDPM/ADM implementation (`create_model_and_diffusion`)               | Repo cloned as `guided-diffusion/`                                                           |
-| **CLIP**                   | OpenAI CLIP (used via `CLIP.clip`)                                          | Repo cloned as `CLIP/`; ViT/RN **weights** load on first use (cached under `~/.cache`/torch) |
-| **ResizeRight**            | Resizing helper                                                             | Repo cloned as `ResizeRight/`                                                                |
-| **pytorch3d-lite**         | `py3d_tools` for 3D transforms                                              | Repo cloned as `pytorch3d-lite/`                                                             |
-| **MiDaS**                  | Depth backbone for 3D / `main_xform_utils`                                  | Repo cloned as `MiDaS/`; default `**dpt_large-midas-2f21e586.pt`** → `models/`               |
-| **main_xform_utils**       | 3D warp helpers                                                             | `main_xform_utils.py` in repo root (or legacy upstream copy)                                  |
-| **Primary diffusion UNet** | Main noise model (default `**512x512_diffusion_uncond_finetune_008100`**)   | `512x512_diffusion_uncond_finetune_008100.pt` → `models/`                                    |
-| **Secondary model**        | Smaller imagenet-conditioned helper (`use_secondary_model=True` by default) | `secondary_model_imagenet_2.pth` → `models/`                                                 |
+### Mandatory third-party code (cloned beside the project if missing)
 
+- **guided-diffusion** — OpenAI DDPM/ADM (`create_model_and_diffusion`). Location: `./guided-diffusion/`.
+- **CLIP** — `CLIP.clip` text/image encoders. Location: `./CLIP/`; ViT/RN weights often under `~/.cache/torch`.
+- **ResizeRight** — `resize_right`. Location: `./ResizeRight/`.
+- **pytorch3d-lite** — `py3d_tools` (3D). Location: `./pytorch3d-lite/`.
+- **MiDaS** — Depth for 3D / warp. Location: `./MiDaS/`.
 
-Also required: **PyTorch**, **torchvision**, and Python deps installed by the script (e.g. `lpips`, `timm`, `opencv-python`, `pandas`, …).
+### Mandatory weights (default configuration)
 
-### Optional
+- **Primary UNet** (default `512x512_diffusion_uncond_finetune_008100`) — `models/*.pt` per `diff_model_map`.
+- **Secondary model** (when enabled) — `secondary_model_imagenet_2.pth` → `models/`.
+- **MiDaS DPT Large** (default) — e.g. `dpt_large-midas-2f21e586.pt` → `models/`.
 
+You also need **PyTorch**, **torchvision**, and dependencies the script installs (e.g. `lpips`, `timm`, `opencv-python`, `pandas`).
 
-| Block/Model                         | When                                                     | Notes                                                                                                                                                                                                            |
-| ----------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **AdaBins**                         | `USE_ADABINS=True` (default)                             | Repo `AdaBins/`; weights `**AdaBins_nyu.pt`** → `pretrained/` (downloaded from [deforum/AdaBins](https://huggingface.co/deforum/AdaBins) only; if `wget` fails, download manually or set `USE_ADABINS=False`).   |
-| **open_clip**                       | Any OpenCLIP flag enabled (e.g. LAION checkpoints)       | Repo `open_clip/`; weights fetched by `open_clip` when a model is first built                                                                                                                                    |
-| **Alternate diffusion checkpoints** | Set `diffusion_model` to another key in `diff_model_map` | e.g. **256×256** OpenAI base, **portrait_generator_v001**, **pixel** / **watercolor** / **PulpSciFi** finetunes from Hugging Face (see `src/discodiff/main.py` → `diff_model_map`) — each is a separate `.pt` under `models/` |
-| **RAFT**                            | `animation_mode == 'Video Input'`                        | Repo `RAFT/`; `raft-things.pth` (and related) via `RAFT/download_models.sh`                                                                                                                                      |
-| **Custom UNet**                     | `diffusion_model == 'custom'`                            | Your `custom_path` checkpoint                                                                                                                                                                                    |
-| **Extra MiDaS variants**            | `midas_depth_model` other than `dpt_large`               | Additional `.pt` files in `models/` per MiDaS/DPT naming in `src/discodiff/main.py`                                                                                                                                |
+### Optional third-party / weights
 
+- **AdaBins** — Enable with **`USE_ADABINS = True`** in `src/discodiff/main.py` (default **`False`**). `./AdaBins/`; `AdaBins_nyu.pt` → `pretrained/` ([deforum/AdaBins](https://huggingface.co/deforum/AdaBins)); env **`MAIN_USE_ADABINS`** follows that flag.
+- **open_clip** — When OpenCLIP options are enabled in `main.py`. `./open_clip/`; weights when the model is first built.
+- **Other diffusion checkpoints** — `diffusion_model` keys in `diff_model_map` in `main.py`; extra `.pt` files under `models/`.
+- **RAFT** — When `animation_mode == 'Video Input'`. `./RAFT/`; `raft-things.pth` (see `RAFT/download_models.sh`).
+- **Custom UNet** — When `diffusion_model == 'custom'`; path in `custom_path`.
+- **Other MiDaS checkpoints** — When `midas_depth_model` ≠ `dpt_large`; matching `.pt` in `models/` per `main.py`.
 
