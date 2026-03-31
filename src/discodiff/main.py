@@ -2182,7 +2182,7 @@ def main(cli_overrides: dict | None = None) -> None:
         nonlocal fuzzy_prompt, rand_mag, eta, use_vertical_symmetry, use_horizontal_symmetry
         nonlocal transformation_percent, video_init_flow_warp, video_init_flow_blend
         nonlocal video_init_check_consistency, text_prompts, image_prompts
-        nonlocal width_height, side_x, side_y
+        nonlocal width_height, side_x, side_y, steps
         if not ov:
             return
         if "clip_guidance_scale" in ov:
@@ -2203,6 +2203,8 @@ def main(cli_overrides: dict | None = None) -> None:
             init_scale = ov["init_scale"]
         if "skip_steps" in ov:
             skip_steps = ov["skip_steps"]
+        if "steps" in ov:
+            steps = ov["steps"]
         if "perlin_init" in ov:
             perlin_init = ov["perlin_init"]
         if "perlin_mode" in ov:

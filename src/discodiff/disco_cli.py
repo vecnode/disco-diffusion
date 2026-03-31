@@ -27,6 +27,13 @@ def _optional_json_dict(path: str) -> dict:
     return _int_key_mapping(data)
 
 
+def _positive_int(s: str) -> int:
+    v = int(s)
+    if v < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return v
+
+
 def _parse_transformation_percent(s: str) -> list[float]:
     s = s.strip()
     if s.startswith("["):
@@ -52,6 +59,13 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
     p.add_argument("--init-image", type=str, dest="init_image", help="URL/path, or empty for None")
     p.add_argument("--init-scale", type=float, dest="init_scale")
     p.add_argument("--skip-steps", type=int, dest="skip_steps")
+    p.add_argument(
+        "--steps",
+        type=_positive_int,
+        dest="steps",
+        metavar="N",
+        help="DDIM step count (timestep_respacing becomes ddim{N}; same as notebook steps)",
+    )
     p.add_argument("--perlin-init", action=argparse.BooleanOptionalAction, dest="perlin_init")
     p.add_argument("--perlin-mode", type=str, dest="perlin_mode", choices=("gray", "color", "mixed"))
     p.add_argument("--skip-augs", action=argparse.BooleanOptionalAction, dest="skip_augs")
@@ -130,6 +144,7 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         "cutn_batches",
         "init_scale",
         "skip_steps",
+        "steps",
         "perlin_mode",
         "rand_mag",
         "eta",

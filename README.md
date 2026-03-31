@@ -2,7 +2,7 @@
 
 A modern refactor of disco-diffusion (ongoing).
 
-Specific support for RTX Graphics Cards.
+Specific support for RTX Graphics Cards, tests under 24Gb.
 
 ## Reproduce
 
@@ -24,7 +24,7 @@ EOF
 
 ```sh
 # 2) Same resolution and prompt, fixed seed for reproducibility
-python3 disco.py --width 512 --height 512 --set-seed 42 \
+python3 disco.py --width 1024 --height 576 --set-seed 42 --steps 250 \
   --text-prompts-json /dev/stdin <<'EOF'
 {"0": ["trees and a beautiful field of the mountain"]}
 EOF
