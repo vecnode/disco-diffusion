@@ -7,8 +7,8 @@ from PIL import Image
 import numpy as np
 import math
 
-# Set from disco.py: USE_ADABINS → DISCO_USE_ADABINS ('1' / '0'). Default '1' for standalone use.
-_DISCO_WANTS_ADABINS = os.environ.get('DISCO_USE_ADABINS', '1') != '0'
+# Set from application entry: USE_ADABINS → MAIN_USE_ADABINS ('1' / '0'). Default '1' for standalone use.
+_MAIN_WANTS_ADABINS = os.environ.get('MAIN_USE_ADABINS', '1') != '0'
 
 try:
     from infer import InferenceHelper
@@ -26,13 +26,13 @@ def transform_image_3d(img_filepath, midas_model, midas_transform, device, rot_m
     w, h = img_pil.size
     image_tensor = torchvision.transforms.functional.to_tensor(img_pil).to(device)
 
-    want_adabins_blend = midas_weight < 1.0 and _DISCO_WANTS_ADABINS
+    want_adabins_blend = midas_weight < 1.0 and _MAIN_WANTS_ADABINS
     adabins_depth_np = None
 
     if want_adabins_blend and not _INFERENCE_HELPER_AVAILABLE:
         print(
             "AdaBins (InferenceHelper) not importable; using MiDaS depth only. "
-            "Add AdaBins to PYTHONPATH and weights under pretrained/, or set USE_ADABINS = False in disco.py."
+            "Add AdaBins to PYTHONPATH and weights under pretrained/, or set USE_ADABINS = False in src/discodiff/main.py."
         )
     elif want_adabins_blend:
         # AdaBins — predictions using nyu dataset

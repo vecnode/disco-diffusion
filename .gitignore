@@ -1,6 +1,10 @@
 __pycache__/
 .DS_Store
 
+# Python environments (never commit)
+venv/
+.venv/
+
 MiDaS/
 CLIP/
 ResizeRight/
@@ -11,5 +15,10 @@ open_clip/
 
 models/
 pretrained/
-images_out/
-init_images/
+output/
+input/
+
+progress.png
+
+output/
+input/
