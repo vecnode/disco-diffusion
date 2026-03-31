@@ -70,37 +70,4 @@ EOF
 
 ## Platform
 
-**Linux tested.** This repo is maintained and expected to run on **glibc-based Linux** with a working **NVIDIA stack** (proprietary driver so `nvidia-smi` reports your GPU). Other OSes are currently out of scope; if you run elsewhere, you may see a stderr warning — set `DISCO_ALLOW_NON_LINUX=1` to suppress it (still unsupported).
-
-## GPU (NVIDIA on Linux)
-
-**Optional environment variables** (defaults unchanged):
-
-
-| Variable                  | Purpose                                                                                |
-| ------------------------- | -------------------------------------------------------------------------------------- |
-| `CUDA_VISIBLE_DEVICES`    | Restrict visible GPUs (e.g. `0`).                                                      |
-| `PYTORCH_CUDA_ALLOC_CONF` | e.g. `expandable_segments:True` to reduce fragmentation OOMs.                          |
-| `DISCO_ALLOW_TF32`        | `1` on **Ampere+** enables TF32 for faster matmul / cuDNN (small numeric differences). |
-| `DISCO_CUDNN_BENCHMARK`   | `1` enables cuDNN autotune for throughput (less strict determinism).                   |
-
-
-CPU runs: set `USE_CPU = True` near the top of `src/discodiff/main.py`. On CUDA OOM, a short hint is printed to stderr.
-
-## Libraries
-
-**Application layout:** `**src/discodiff/`** as the `**discodiff`** package. Root `**disco.py`** prepends `src/` to `sys.path` and calls `**discodiff.main.main()**`, which still behaves like the original notebook: **pip** installs, **git clones** for missing trees, **weights** into `models/` (and paths below).
-
-`**src/discodiff/` layout** (top-level `**main.py`** is the notebook-style runtime.)
-
-- `**main.py`** — Active entry body: environment, clones, CLIP / diffusion / MiDaS, settings, `do_run` sampling loop.
-- `**app/entrypoint.py`** — `**discodiff.run()`** → delegates to `**main.main()`** (also exported from `**discodiff.__init__**`).
-- `**cli/parser.py`** — `disco.py` flags → override dict (`**discodiff.cli.parse_disco_argv`**).
-- `**config/run_args.py`** — `**build_run_args_namespace`**; `**config/keyframes.py`** — `split_prompts`, keyframe parsing; `**config/defaults.py`** reserved for future defaults.
-- `**diffusion/`** — `**load.py`** (UNet load), `**schedules.py**` (DDIM string / step count), `**sampling.py`** (placeholder for loop extraction).
-- `**guidance/clip_cuts.py`** — Placeholder for CLIP cutouts / `cond_fn` extraction.
-- `**platform/cuda.py`** — Linux notice, CUDA logging, TF32 / cuDNN env toggles.
-- `**assets/`** — `**downloads.py`** (git, wget, fetch, checkpoint download), `**paths.py**` (`createPath`).
-- `**image/**` — `**resize.py**`, `**noise.py**` (Perlin).
-- `**geometry/warp.py`** — 3D / depth warp (MiDaS; optional AdaBins).
-
+**Linux tested.** This repo is maintained and expected to run on **glibc-based Linux** with a working **NVIDIA stack** (proprietary driver so `nvidia-smi` reports your GPU). Other OSes are currently out of scope; if you run elsewhere, you may see a stderr warning - set `DISCO_ALLOW_NON_LINUX=1` to suppress it (still unsupported).

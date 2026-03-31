@@ -21,8 +21,6 @@ def main(cli_overrides: dict | None = None) -> None:
         fetch,
         get_model_filename,
         gitclone,
-        pipi,
-        pipie,
         wget,
     )
 
@@ -120,8 +118,8 @@ def main(cli_overrides: dict | None = None) -> None:
         from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
     from .image.resize import resize
-
-    from .geometry import py3d_tools
+    from .guidance.clip_cuts import MakeCutouts, MakeCutoutsDango, range_loss, spherical_dist_loss, tv_loss
+    from .diffusion.sampling import iter_clip_guided_samples, timestep_after_skip
 
     try:
         from midas.dpt_depth import DPTDepthModel
@@ -339,12 +337,6 @@ def main(cli_overrides: dict | None = None) -> None:
     from .image import noise as _noise
 
 
-    def read_image_workaround(path):
-        """OpenCV reads images as BGR, Pillow saves them as RGB. Work around
-        this incompatibility to avoid colour inversions."""
-        im_tmp = cv2.imread(path)
-        return cv2.cvtColor(im_tmp, cv2.COLOR_BGR2RGB)
-
     def parse_prompt(prompt):
         if prompt.startswith('http://') or prompt.startswith('https://'):
             vals = prompt.rsplit(':', 2)
@@ -353,198 +345,6 @@ def main(cli_overrides: dict | None = None) -> None:
             vals = prompt.rsplit(':', 1)
         vals = vals + ['', '1'][len(vals):]
         return vals[0], float(vals[1])
-
-    def sinc(x):
-        return torch.where(x != 0, torch.sin(math.pi * x) / (math.pi * x), x.new_ones([]))
-
-    def lanczos(x, a):
-        cond = torch.logical_and(-a < x, x < a)
-        out = torch.where(cond, sinc(x) * sinc(x/a), x.new_zeros([]))
-        return out / out.sum()
-
-    def ramp(ratio, width):
-        n = math.ceil(width / ratio + 1)
-        out = torch.empty([n])
-        cur = 0
-        for i in range(out.shape[0]):
-            out[i] = cur
-            cur += ratio
-        return torch.cat([-out[1:].flip([0]), out])[1:-1]
-
-    def resample(input, size, align_corners=True):
-        n, c, h, w = input.shape
-        dh, dw = size
-
-        input = input.reshape([n * c, 1, h, w])
-
-        if dh < h:
-            kernel_h = lanczos(ramp(dh / h, 2), 2).to(input.device, input.dtype)
-            pad_h = (kernel_h.shape[0] - 1) // 2
-            input = F.pad(input, (0, 0, pad_h, pad_h), 'reflect')
-            input = F.conv2d(input, kernel_h[None, None, :, None])
-
-        if dw < w:
-            kernel_w = lanczos(ramp(dw / w, 2), 2).to(input.device, input.dtype)
-            pad_w = (kernel_w.shape[0] - 1) // 2
-            input = F.pad(input, (pad_w, pad_w, 0, 0), 'reflect')
-            input = F.conv2d(input, kernel_w[None, None, None, :])
-
-        input = input.reshape([n, c, h, w])
-        return F.interpolate(input, size, mode='bicubic', align_corners=align_corners)
-
-    class MakeCutouts(nn.Module):
-        def __init__(self, cut_size, cutn, skip_augs=False):
-            super().__init__()
-            self.cut_size = cut_size
-            self.cutn = cutn
-            self.skip_augs = skip_augs
-            self.augs = T.Compose([
-                T.RandomHorizontalFlip(p=0.5),
-                T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                T.RandomAffine(degrees=15, translate=(0.1, 0.1)),
-                T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                T.RandomPerspective(distortion_scale=0.4, p=0.7),
-                T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                T.RandomGrayscale(p=0.15),
-                T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                # T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
-            ])
-
-        def forward(self, input):
-            input = T.Pad(input.shape[2]//4, fill=0)(input)
-            sideY, sideX = input.shape[2:4]
-            max_size = min(sideX, sideY)
-
-            cutouts = []
-            for ch in range(self.cutn):
-                if ch > self.cutn - self.cutn//4:
-                    cutout = input.clone()
-                else:
-                    size = int(max_size * torch.zeros(1,).normal_(mean=.8, std=.3).clip(float(self.cut_size/max_size), 1.))
-                    offsetx = torch.randint(0, abs(sideX - size + 1), ())
-                    offsety = torch.randint(0, abs(sideY - size + 1), ())
-                    cutout = input[:, :, offsety:offsety + size, offsetx:offsetx + size]
-
-                if not self.skip_augs:
-                    cutout = self.augs(cutout)
-                cutouts.append(resample(cutout, (self.cut_size, self.cut_size)))
-                del cutout
-
-            cutouts = torch.cat(cutouts, dim=0)
-            return cutouts
-
-    cutout_debug = False
-    padargs = {}
-
-    class MakeCutoutsDango(nn.Module):
-        def __init__(self, cut_size,
-                     Overview=4, 
-                     InnerCrop = 0, IC_Size_Pow=0.5, IC_Grey_P = 0.2
-                     ):
-            super().__init__()
-            self.cut_size = cut_size
-            self.Overview = Overview
-            self.InnerCrop = InnerCrop
-            self.IC_Size_Pow = IC_Size_Pow
-            self.IC_Grey_P = IC_Grey_P
-            if args.animation_mode == 'None':
-              self.augs = T.Compose([
-                  T.RandomHorizontalFlip(p=0.5),
-                  T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                  T.RandomAffine(degrees=10, translate=(0.05, 0.05),  interpolation = T.InterpolationMode.BILINEAR),
-                  T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                  T.RandomGrayscale(p=0.1),
-                  T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                  T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
-              ])
-            elif args.animation_mode == 'Video Input':
-              self.augs = T.Compose([
-                  T.RandomHorizontalFlip(p=0.5),
-                  T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                  T.RandomAffine(degrees=15, translate=(0.1, 0.1)),
-                  T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                  T.RandomPerspective(distortion_scale=0.4, p=0.7),
-                  T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                  T.RandomGrayscale(p=0.15),
-                  T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                  # T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
-              ])
-            elif  args.animation_mode == '2D' or args.animation_mode == '3D':
-              self.augs = T.Compose([
-                  T.RandomHorizontalFlip(p=0.4),
-                  T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                  T.RandomAffine(degrees=10, translate=(0.05, 0.05),  interpolation = T.InterpolationMode.BILINEAR),
-                  T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                  T.RandomGrayscale(p=0.1),
-                  T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                  T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.3),
-              ])
-
-
-        def forward(self, input):
-            cutouts = []
-            gray = T.Grayscale(3)
-            sideY, sideX = input.shape[2:4]
-            max_size = min(sideX, sideY)
-            min_size = min(sideX, sideY, self.cut_size)
-            l_size = max(sideX, sideY)
-            output_shape = [1,3,self.cut_size,self.cut_size] 
-            output_shape_2 = [1,3,self.cut_size+2,self.cut_size+2]
-            pad_input = F.pad(input,((sideY-max_size)//2,(sideY-max_size)//2,(sideX-max_size)//2,(sideX-max_size)//2), **padargs)
-            cutout = resize(pad_input, out_shape=output_shape)
-
-            if self.Overview>0:
-                if self.Overview<=4:
-                    if self.Overview>=1:
-                        cutouts.append(cutout)
-                    if self.Overview>=2:
-                        cutouts.append(gray(cutout))
-                    if self.Overview>=3:
-                        cutouts.append(TF.hflip(cutout))
-                    if self.Overview==4:
-                        cutouts.append(gray(TF.hflip(cutout)))
-                else:
-                    cutout = resize(pad_input, out_shape=output_shape)
-                    for _ in range(self.Overview):
-                        cutouts.append(cutout)
-
-                if cutout_debug:
-                    TF.to_pil_image(cutouts[0].clamp(0, 1).squeeze(0)).save("cutout_overview0.jpg", quality=99)
-
-
-            if self.InnerCrop >0:
-                for i in range(self.InnerCrop):
-                    size = int(torch.rand([])**self.IC_Size_Pow * (max_size - min_size) + min_size)
-                    offsetx = torch.randint(0, sideX - size + 1, ())
-                    offsety = torch.randint(0, sideY - size + 1, ())
-                    cutout = input[:, :, offsety:offsety + size, offsetx:offsetx + size]
-                    if i <= int(self.IC_Grey_P * self.InnerCrop):
-                        cutout = gray(cutout)
-                    cutout = resize(cutout, out_shape=output_shape)
-                    cutouts.append(cutout)
-                if cutout_debug:
-                    TF.to_pil_image(cutouts[-1].clamp(0, 1).squeeze(0)).save("cutout_InnerCrop.jpg", quality=99)
-            cutouts = torch.cat(cutouts)
-            if skip_augs is not True: cutouts=self.augs(cutouts)
-            return cutouts
-
-    def spherical_dist_loss(x, y):
-        x = F.normalize(x, dim=-1)
-        y = F.normalize(y, dim=-1)
-        return (x - y).norm(dim=-1).div(2).arcsin().pow(2).mul(2)     
-
-    def tv_loss(input):
-        """L2 total variation loss, as in Mahendran et al."""
-        input = F.pad(input, (0, 1, 0, 1), 'replicate')
-        x_diff = input[..., :-1, 1:] - input[..., :-1, :-1]
-        y_diff = input[..., 1:, :-1] - input[..., :-1, :-1]
-        return (x_diff**2 + y_diff**2).mean([1, 2, 3])
-
-
-    def range_loss(input):
-        return (input - input.clamp(-1, 1)).pow(2).mean([1, 2, 3])
-
-
 
     stop_on_next_loop = False  # Make sure GPU memory doesn't get corrupted from cancelling the run mid-way through, allow a full frame to complete
     TRANSLATION_SCALE = 1.0/200.0
@@ -857,11 +657,14 @@ def main(cli_overrides: dict | None = None) -> None:
                         except:
                             input_resolution=224
 
-                        cuts = MakeCutoutsDango(input_resolution,
+                        cuts = MakeCutoutsDango(
+                                input_resolution,
                                 Overview= args.cut_overview[1000-t_int], 
                                 InnerCrop = args.cut_innercut[1000-t_int],
                                 IC_Size_Pow=args.cut_ic_pow[1000-t_int],
-                                IC_Grey_P = args.cut_icgray_p[1000-t_int]
+                                IC_Grey_P = args.cut_icgray_p[1000-t_int],
+                                animation_mode=args.animation_mode,
+                                skip_augs=skip_augs,
                                 )
                         clip_in = normalize(cuts(x_in.add(1).div(2)))
                         image_embeds = model_stat["clip_model"].encode_image(clip_in).float()
@@ -892,12 +695,6 @@ def main(cli_overrides: dict | None = None) -> None:
                   return grad * magnitude.clamp(max=args.clamp_max) / magnitude  #min=-0.02, min=-clamp_max, 
               return grad
 
-          if args.diffusion_sampling_mode == 'ddim':
-              sample_fn = diffusion.ddim_sample_loop_progressive
-          else:
-              sample_fn = diffusion.plms_sample_loop_progressive
-
-
           image_display = nullcontext()
           for i in range(args.n_batches):
               if args.animation_mode == 'None':
@@ -907,40 +704,28 @@ def main(cli_overrides: dict | None = None) -> None:
               print('')
               gc.collect()
               torch.cuda.empty_cache()
-              cur_t = diffusion.num_timesteps - skip_steps - 1
+              cur_t = timestep_after_skip(diffusion, skip_steps)
               total_steps = cur_t
 
               if perlin_init:
                   init = _noise.regen_perlin(perlin_mode, side_x, side_y, device, batch_size)
 
-              if args.diffusion_sampling_mode == 'ddim':
-                  samples = sample_fn(
-                      model,
-                      (batch_size, 3, args.side_y, args.side_x),
-                      clip_denoised=clip_denoised,
-                      model_kwargs={},
-                      cond_fn=cond_fn,
-                      progress=True,
-                      skip_timesteps=skip_steps,
-                      init_image=init,
-                      randomize_class=randomize_class,
-                      eta=eta,
-                      transformation_fn=symmetry_transformation_fn,
-                      transformation_percent=args.transformation_percent
-                  )
-              else:
-                  samples = sample_fn(
-                      model,
-                      (batch_size, 3, args.side_y, args.side_x),
-                      clip_denoised=clip_denoised,
-                      model_kwargs={},
-                      cond_fn=cond_fn,
-                      progress=True,
-                      skip_timesteps=skip_steps,
-                      init_image=init,
-                      randomize_class=randomize_class,
-                      order=2,
-                  )
+              samples = iter_clip_guided_samples(
+                  diffusion_sampling_mode=args.diffusion_sampling_mode,
+                  diffusion=diffusion,
+                  model=model,
+                  batch_size=batch_size,
+                  side_y=args.side_y,
+                  side_x=args.side_x,
+                  clip_denoised=clip_denoised,
+                  cond_fn=cond_fn,
+                  skip_timesteps=skip_steps,
+                  init_image=init,
+                  randomize_class=randomize_class,
+                  eta=eta,
+                  symmetry_transformation_fn=symmetry_transformation_fn,
+                  transformation_percent=args.transformation_percent,
+              )
 
 
               for j, sample in enumerate(samples):    
@@ -1486,11 +1271,6 @@ def main(cli_overrides: dict | None = None) -> None:
 
 
 
-    """
-    # Custom model settings 
-    Modify in accordance with your training settings and run the cell
-    """
-
 
     if diffusion_model == 'custom':
       model_config.update({
@@ -1511,10 +1291,6 @@ def main(cli_overrides: dict | None = None) -> None:
           })
 
 
-
-    """
-    # 3. Settings
-    """
 
 
 
@@ -1619,7 +1395,7 @@ def main(cli_overrides: dict | None = None) -> None:
             subprocess.run(['ffmpeg', '-i', f'{video_init_path}', '-vf', f'{vf}', '-vsync', 'vfr', '-q:v', '2', '-loglevel', 'error', '-stats', f'{videoFramesFolder}/%04d.jpg'], stdout=subprocess.PIPE).stdout.decode('utf-8')
         else: 
             print(f'\nWARNING!\n\nVideo not found: {video_init_path}.\nPlease check your video path.\n')
-        # !ffmpeg -i {video_init_path} -vf {vf} -vsync vfr -q:v 2 -loglevel error -stats {videoFramesFolder}/%04d.jpg
+
 
 
 
@@ -1634,7 +1410,7 @@ def main(cli_overrides: dict | None = None) -> None:
     if GENERATION_MODE == "Video Input":
         max_frames = len(glob(f'{videoFramesFolder}/*.jpg'))
 
-    interp_spline = 'Linear' #Do not change, currently will not look good. param ['Linear','Quadratic','Cubic']{type:"string"}
+    interp_spline = 'Linear' # Do not change, currently will not look good. param ['Linear','Quadratic','Cubic']{type:"string"}
     angle = "0:(0)"
     zoom = "0: (1), 10: (1.05)"
     translation_x = "0: (0)"
@@ -1651,15 +1427,10 @@ def main(cli_overrides: dict | None = None) -> None:
     padding_mode = 'border'
     sampling_mode = 'bicubic'
 
-    #======= TURBO MODE
-
-    #@markdown ####**Turbo Mode (3D anim only):**
-    #@markdown (Starts after frame 10,) skips diffusion steps and just uses depth map to warp images for skipped frames.
-    #@markdown Speeds up rendering by 2x-4x, and may improve image coherence between frames.
-    #@markdown For different settings tuned for Turbo Mode, refer to the original Disco-Turbo Github: https://github.com/zippy731/disco-diffusion-turbo
+    #=== TURBO MODE
 
     turbo_mode = False
-    turbo_steps = "3" #@param ["2","3","4","5","6"] {type:"string"}
+    turbo_steps = "3" # ["2","3","4","5","6"]
     turbo_preroll = 10 # frames
 
     # Insist that turbo be used only with 3D anim.
@@ -1714,7 +1485,7 @@ def main(cli_overrides: dict | None = None) -> None:
         vr_mode = False
 
 
-    from .config.keyframes import get_inbetweens, parse_key_frames, split_prompts
+    from .config.keyframes import get_inbetweens, parse_key_frames
 
 
     if key_frames:
@@ -1870,9 +1641,10 @@ def main(cli_overrides: dict | None = None) -> None:
         import sys
         sys.path.append(f'{PROJECT_DIR}/RAFT/core')
         os.chdir(f'{PROJECT_DIR}/RAFT/core')
+        
         print(os.getcwd())
-
         print("Renaming RAFT core's utils.utils to raftutils.utils (to avoid a naming conflict with AdaBins)")
+        
         if not os.path.exists(f'{PROJECT_DIR}/RAFT/core/raftutils'):
             os.rename(f'{PROJECT_DIR}/RAFT/core/utils', f'{PROJECT_DIR}/RAFT/core/raftutils')
             sub_p_res = subprocess.run(['sed', '-i', 's/from utils.utils/from raftutils.utils/g', f'{PROJECT_DIR}/RAFT/core/corr.py'], stdout=subprocess.PIPE).stdout.decode('utf-8')
@@ -2283,7 +2055,17 @@ def main(cli_overrides: dict | None = None) -> None:
             new_file = new_folder + f'/{batch_name}({batchNum})_{i:04}.png'
             os.rename(old_file, new_file)
 
-
+    def _exit_if_video_input_assets_missing() -> None:
+        if GENERATION_MODE != "Video Input":
+            return
+        frames_chk = sorted(glob(in_path + "/*.*"))
+        if len(frames_chk) == 0:
+            sys.exit(
+                "ERROR: 0 frames found.\nPlease check your video input path and rerun the video settings cell."
+            )
+        flows_chk = glob(flo_folder + "/*.*")
+        if len(flows_chk) == 0 and video_init_flow_warp:
+            sys.exit("ERROR: 0 flow files found.\nPlease rerun the flow generation cell.")
 
 
 
@@ -2299,13 +2081,7 @@ def main(cli_overrides: dict | None = None) -> None:
     skip_step_ratio = int(frames_skip_steps.rstrip("%")) / 100
     calc_frames_skip_steps = math.floor(steps * skip_step_ratio)
 
-    if GENERATION_MODE == 'Video Input':
-        frames = sorted(glob(in_path+'/*.*'));
-        if len(frames)==0: 
-            sys.exit("ERROR: 0 frames found.\nPlease check your video input path and rerun the video settings cell.")
-        flows = glob(flo_folder+'/*.*')
-        if (len(flows)==0) and video_init_flow_warp:
-            sys.exit("ERROR: 0 flow files found.\nPlease rerun the flow generation cell.")
+    _exit_if_video_input_assets_missing()
 
     if steps <= calc_frames_skip_steps:
         sys.exit("ERROR: You can't skip more steps than your total steps")
@@ -2382,23 +2158,16 @@ def main(cli_overrides: dict | None = None) -> None:
         torch.cuda.empty_cache()
 
 
-    """
-    # 5. Create the video
-    """
 
 
     import PIL
 
+    from .image.ffmpeg_utils import encode_numbered_png_sequence_h264
+
     # Create video
     # Video file will save in the same folder as your images.
 
-    if GENERATION_MODE == 'Video Input':
-        frames = sorted(glob(in_path+'/*.*'));
-        if len(frames)==0: 
-            sys.exit("ERROR: 0 frames found.\nPlease check your video input path and rerun the video settings cell.")
-        flows = glob(flo_folder+'/*.*')
-        if (len(flows)==0) and video_init_flow_warp:
-            sys.exit("ERROR: 0 flow files found.\nPlease rerun the flow generation cell.")
+    _exit_if_video_input_assets_missing()
 
     blend =  0.5
     video_init_check_consistency = False
@@ -2413,10 +2182,6 @@ def main(cli_overrides: dict | None = None) -> None:
     init_frame = 1
     last_frame = final_frame
     fps = 12
-
-    frames = []
-
-    # tqdm.write('Generating video')
 
     if last_frame == 'final_frame':
         last_frame = len(glob(batchFolder+f"/{folder}({run})_*.png"))
@@ -2466,39 +2231,14 @@ def main(cli_overrides: dict | None = None) -> None:
             frame = PIL.Image.fromarray((np.array(frame1)*(1-blend) + np.array(frame2)*(blend)).astype('uint8')).save(batchFolder+f"/blend/{folder}({run})_{i:04}.png")
 
 
-    cmd = [
-        'ffmpeg',
-        '-y',
-        '-vcodec',
-        'png',
-        '-r',
-        str(fps),
-        '-start_number',
-        str(init_frame),
-        '-i',
-        image_path,
-        '-frames:v',
-        str(last_frame+1),
-        '-c:v',
-        'libx264',
-        '-vf',
-        f'fps={fps}',
-        '-pix_fmt',
-        'yuv420p',
-        '-crf',
-        '17',
-        '-preset',
-        'veryslow',
-        filepath
-    ]
-
-    process = subprocess.Popen(cmd, cwd=f'{batchFolder}', stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = process.communicate()
-    if process.returncode != 0:
-        print(stderr)
-        raise RuntimeError(stderr)
-    else:
-        print("The video is ready and saved to the images folder")
+    encode_numbered_png_sequence_h264(
+        cwd=f"{batchFolder}",
+        image_sequence_pattern=image_path,
+        output_path=filepath,
+        fps=fps,
+        start_number=init_frame,
+        frames_v=last_frame + 1,
+    )
 
 
 if __name__ == "__main__":
