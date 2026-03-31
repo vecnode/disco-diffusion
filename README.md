@@ -36,6 +36,23 @@ python3 disco.py --width 512 --height 512 --clip-guidance-scale 6500 --eta 0.5 \
 EOF
 ```
 
+## Platform
+
+**Linux only.** This repo is maintained and expected to run on **glibc-based Linux** with a working **NVIDIA stack** (proprietary driver so `nvidia-smi` reports your GPU). Other OSes are out of scope; if you run elsewhere, you may see a stderr warning — set `DISCO_ALLOW_NON_LINUX=1` to suppress it (still unsupported).
+
+## GPU (NVIDIA on Linux)
+
+**Optional environment variables** (defaults unchanged):
+
+| Variable | Purpose |
+|----------|---------|
+| `CUDA_VISIBLE_DEVICES` | Restrict visible GPUs (e.g. `0`). |
+| `PYTORCH_CUDA_ALLOC_CONF` | e.g. `expandable_segments:True` to reduce fragmentation OOMs. |
+| `DISCO_ALLOW_TF32` | `1` on **Ampere+** enables TF32 for faster matmul / cuDNN (small numeric differences). |
+| `DISCO_CUDNN_BENCHMARK` | `1` enables cuDNN autotune for throughput (less strict determinism). |
+
+CPU runs: set `USE_CPU = True` near the top of `src/discodiff/main.py`. On CUDA OOM, a short hint is printed to stderr.
+
 ## Libraries and models
 
 **Application layout:** `**src/discodiff/`** as the `**discodiff**` package. Root `**disco.py**` prepends `src/` to `sys.path` and calls `**discodiff.main.main()**`, which still behaves like the original notebook: **pip** installs, **git clones** for missing trees, **weights** into `models/` (and paths below).
@@ -43,13 +60,14 @@ EOF
 `**src/discodiff/` modules**
 
 - `**main.py`** — Environment setup, third-party clones, CLIP / diffusion / MiDaS, user settings, sampling loop, optional ffmpeg video pass.
-- `**config.py**` — Builds run `args` as a `SimpleNamespace` from the legacy local-variable layout.
-- `**pipeline.py**` — Primary UNet + diffusion instance: checkpoint load, device, fp16 / grad flags.
-- `**run.py**` — Invokes the diffusion loop wired through the `main` module.
-- `**main_utils.py**` — Git clone, wget, fetch, checkpoint download, paths.
-- `**diffusion_utils.py**` — Keyframes and prompt series (`split_prompts`, etc.).
-- `**noise.py**` — Perlin initialization.
-- `**main_xform_utils.py**` — 3D warping / depth (MiDaS; optional AdaBins when enabled).
+- `**config.py`** — Builds run `args` as a `SimpleNamespace` from the legacy local-variable layout.
+- `**pipeline.py`** — Primary UNet + diffusion instance: checkpoint load, device, fp16 / grad flags.
+- `**run.py`** — Invokes the diffusion loop wired through the `main` module.
+- `**main_utils.py`** — Git clone, wget, fetch, checkpoint download, paths.
+- `**diffusion_utils.py`** — Keyframes and prompt series (`split_prompts`, etc.).
+- `**noise.py`** — Perlin initialization.
+- `**main_xform_utils.py`** — 3D warping / depth (MiDaS; optional AdaBins when enabled).
+- `**cuda_setup.py`** — Linux platform notice; CUDA startup logging; optional TF32 / cuDNN benchmark via env vars.
 
 ### Mandatory third-party code (cloned beside the project if missing)
 
@@ -75,4 +93,3 @@ You also need **PyTorch**, **torchvision**, and dependencies the script installs
 - **RAFT** — When `animation_mode == 'Video Input'`. `./RAFT/`; `raft-things.pth` (see `RAFT/download_models.sh`).
 - **Custom UNet** — When `diffusion_model == 'custom'`; path in `custom_path`.
 - **Other MiDaS checkpoints** — When `midas_depth_model` ≠ `dpt_large`; matching `.pt` in `models/` per `main.py`.
-

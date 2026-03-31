@@ -8,6 +8,10 @@ def main(cli_overrides: dict | None = None) -> None:
 
     print("[discodiff] Runtime starting (first pip steps can be slow; output streams live below).", flush=True)
 
+    from .cuda_setup import warn_if_non_linux_platform
+
+    warn_if_non_linux_platform()
+
     import pathlib
     import shutil
 
@@ -228,7 +232,11 @@ def main(cli_overrides: dict | None = None) -> None:
             print('Disabling CUDNN for A100 gpu', file=sys.stderr)
             torch.backends.cudnn.enabled = False
 
+    from .cuda_setup import apply_env_tf32, log_cuda_device
 
+    if not USE_CPU and DEVICE.type == 'cuda':
+        log_cuda_device(DEVICE)
+        apply_env_tf32(DEVICE)
 
     ### Define Midas functions
 
@@ -595,6 +603,9 @@ def main(cli_overrides: dict | None = None) -> None:
         return x
 
     def do_run():
+      from .cuda_setup import use_cudnn_benchmark_mode
+
+      _cudnn_benchmark = use_cudnn_benchmark_mode()
       seed = args.seed
       print(range(args.start_frame, args.max_frames))
 
@@ -739,8 +750,14 @@ def main(cli_overrides: dict | None = None) -> None:
               np.random.seed(seed)
               random.seed(seed)
               torch.manual_seed(seed)
-              torch.cuda.manual_seed_all(seed)
-              torch.backends.cudnn.deterministic = True
+              if device.type == 'cuda':
+                  torch.cuda.manual_seed_all(seed)
+              if _cudnn_benchmark and torch.backends.cudnn.enabled:
+                  torch.backends.cudnn.benchmark = True
+                  torch.backends.cudnn.deterministic = False
+              else:
+                  torch.backends.cudnn.benchmark = False
+                  torch.backends.cudnn.deterministic = True
 
           target_embeds, weights = [], []
 
@@ -772,7 +789,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
                     if args.fuzzy_prompt:
                         for i in range(25):
-                            model_stat["target_embeds"].append((txt + torch.randn(txt.shape).cuda() * args.rand_mag).clamp(0,1))
+                            model_stat["target_embeds"].append((txt + torch.randn(txt.shape, device=device, dtype=txt.dtype) * args.rand_mag).clamp(0,1))
                             model_stat["weights"].append(weight)
                     else:
                         model_stat["target_embeds"].append(txt)
@@ -788,7 +805,7 @@ def main(cli_overrides: dict | None = None) -> None:
                       embed = clip_model.encode_image(normalize(batch)).float()
                       if fuzzy_prompt:
                           for i in range(25):
-                              model_stat["target_embeds"].append((embed + torch.randn(embed.shape).cuda() * rand_mag).clamp(0,1))
+                              model_stat["target_embeds"].append((embed + torch.randn(embed.shape, device=device, dtype=embed.dtype) * rand_mag).clamp(0,1))
                               weights.extend([weight / cutn] * cutn)
                       else:
                           model_stat["target_embeds"].append(embed)
@@ -1926,7 +1943,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
         def load_img(img, size):
             img = Image.open(img).convert('RGB').resize(size)
-            return torch.from_numpy(np.array(img)).permute(2,0,1).float()[None,...].cuda()
+            return torch.from_numpy(np.array(img)).permute(2,0,1).float()[None,...].to(device)
 
         def get_flow(frame1, frame2, model, iters=20):
             padder = InputPadder(frame1.shape)
@@ -2007,7 +2024,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
                     raft_model = torch.nn.DataParallel(RAFT(args2))
                     raft_model.load_state_dict(torch.load(f'{ROOT_PATH}/RAFT/models/raft-things.pth'))
-                    raft_model = raft_model.module.cuda().eval()
+                    raft_model = raft_model.module.to(device).eval()
 
                     for f in pathlib.Path(f'{flo_fwd_folder}').glob('*.*'):
                         f.unlink()
@@ -2345,6 +2362,12 @@ def main(cli_overrides: dict | None = None) -> None:
         invoke_diffusion()
     except KeyboardInterrupt:
         pass
+    except RuntimeError as exc:
+        from .cuda_setup import format_cuda_oom_hint
+
+        if DEVICE.type == "cuda" and "out of memory" in str(exc).lower():
+            print(format_cuda_oom_hint(), file=sys.stderr)
+        raise
     finally:
         print('Seed used:', seed)
         gc.collect()
