@@ -1,7 +1,7 @@
 """Diffusion application runtime (notebook-style script body; launched via repo `disco.py`)."""
 from __future__ import annotations
 
-def main() -> None:
+def main(cli_overrides: dict | None = None) -> None:
     import subprocess
     import os
     import sys
@@ -39,10 +39,10 @@ def main() -> None:
 
 
 
-    initDirPath = f'{ROOT_PATH}/init_images'
-    createPath(initDirPath)
-    outDirPath = f'{ROOT_PATH}/images_out'
-    createPath(outDirPath)
+    inputDirPath = f'{ROOT_PATH}/input'
+    createPath(inputDirPath)
+    outputDirPath = f'{ROOT_PATH}/output'
+    createPath(outputDirPath)
 
     model_path = f'{ROOT_PATH}/models'
     createPath(model_path)
@@ -763,7 +763,6 @@ def main() -> None:
 
           model_stats = []
           for clip_model in clip_models:
-                cutn = 16
                 model_stat = {"clip_model":None,"target_embeds":[],"make_cutouts":None,"weights":[]}
                 model_stat["clip_model"] = clip_model
 
@@ -1523,6 +1522,7 @@ def main() -> None:
     range_scale = 10
     sat_scale = 0
     cutn_batches = 4
+    cutn = 16
     skip_augs = False
 
 
@@ -1557,7 +1557,7 @@ def main() -> None:
 
 
     # Make folder for batch
-    batchFolder = f'{outDirPath}/{batch_name}'
+    batchFolder = f'{outputDirPath}/{batch_name}'
     createPath(batchFolder)
 
 
@@ -2164,6 +2164,81 @@ def main() -> None:
     if animation_mode == 'Video Input':
         steps = video_init_steps
 
+    def _apply_cli_overrides(ov: dict | None) -> None:
+        nonlocal clip_guidance_scale, tv_scale, range_scale, sat_scale, cutn, cutn_batches
+        nonlocal init_image, init_scale, skip_steps, perlin_init, perlin_mode
+        nonlocal skip_augs, randomize_class, clip_denoised, clamp_grad, set_seed
+        nonlocal fuzzy_prompt, rand_mag, eta, use_vertical_symmetry, use_horizontal_symmetry
+        nonlocal transformation_percent, video_init_flow_warp, video_init_flow_blend
+        nonlocal video_init_check_consistency, text_prompts, image_prompts
+        nonlocal width_height, side_x, side_y
+        if not ov:
+            return
+        if "clip_guidance_scale" in ov:
+            clip_guidance_scale = ov["clip_guidance_scale"]
+        if "tv_scale" in ov:
+            tv_scale = ov["tv_scale"]
+        if "range_scale" in ov:
+            range_scale = ov["range_scale"]
+        if "sat_scale" in ov:
+            sat_scale = ov["sat_scale"]
+        if "cutn" in ov:
+            cutn = ov["cutn"]
+        if "cutn_batches" in ov:
+            cutn_batches = ov["cutn_batches"]
+        if "init_image" in ov:
+            init_image = ov["init_image"]
+        if "init_scale" in ov:
+            init_scale = ov["init_scale"]
+        if "skip_steps" in ov:
+            skip_steps = ov["skip_steps"]
+        if "perlin_init" in ov:
+            perlin_init = ov["perlin_init"]
+        if "perlin_mode" in ov:
+            perlin_mode = ov["perlin_mode"]
+        if "skip_augs" in ov:
+            skip_augs = ov["skip_augs"]
+        if "randomize_class" in ov:
+            randomize_class = ov["randomize_class"]
+        if "clip_denoised" in ov:
+            clip_denoised = ov["clip_denoised"]
+        if "clamp_grad" in ov:
+            clamp_grad = ov["clamp_grad"]
+        if "set_seed" in ov:
+            set_seed = ov["set_seed"]
+        if "fuzzy_prompt" in ov:
+            fuzzy_prompt = ov["fuzzy_prompt"]
+        if "rand_mag" in ov:
+            rand_mag = ov["rand_mag"]
+        if "eta" in ov:
+            eta = ov["eta"]
+        if "use_vertical_symmetry" in ov:
+            use_vertical_symmetry = ov["use_vertical_symmetry"]
+        if "use_horizontal_symmetry" in ov:
+            use_horizontal_symmetry = ov["use_horizontal_symmetry"]
+        if "transformation_percent" in ov:
+            transformation_percent = ov["transformation_percent"]
+        if "video_init_flow_warp" in ov:
+            video_init_flow_warp = ov["video_init_flow_warp"]
+        if "video_init_flow_blend" in ov:
+            video_init_flow_blend = ov["video_init_flow_blend"]
+        if "video_init_check_consistency" in ov:
+            video_init_check_consistency = ov["video_init_check_consistency"]
+        if "text_prompts" in ov:
+            text_prompts = ov["text_prompts"]
+        if "image_prompts" in ov:
+            image_prompts = ov["image_prompts"]
+        if "width_height" in ov:
+            width_height = [ov["width_height"][0], ov["width_height"][1]]
+            side_x = (width_height[0] // 64) * 64
+            side_y = (width_height[1] // 64) * 64
+            if side_x != width_height[0] or side_y != width_height[1]:
+                print(
+                    f"Changing output size to {side_x}x{side_y}. Dimensions must be multiples of 64."
+                )
+
+    _apply_cli_overrides(cli_overrides)
+
     #Update Model Settings
     timestep_respacing = f'ddim{steps}'
     diffusion_steps = (1000//steps)*steps if steps < 1000 else steps
@@ -2243,13 +2318,13 @@ def main() -> None:
     else:
         seed = int(set_seed)
 
-    from discodiff.config import build_run_args_namespace
+    from .config import build_run_args_namespace
 
     args = build_run_args_namespace(locals())
 
     print('Prepping model')
 
-    from discodiff.pipeline import load_primary_diffusion_model
+    from .pipeline import load_primary_diffusion_model
 
     model, diffusion = load_primary_diffusion_model(
         model_config=model_config,
@@ -2261,10 +2336,10 @@ def main() -> None:
         create_model_and_diffusion=create_model_and_diffusion,
         get_model_filename=get_model_filename,
     )
-    import discodiff.main as _main_pub
+    from . import main as _main_pub
 
     _main_pub.do_run = do_run
-    from discodiff.run import invoke_diffusion
+    from .run import invoke_diffusion
 
     try:
         invoke_diffusion()
@@ -2316,12 +2391,12 @@ def main() -> None:
         last_frame = len(glob(batchFolder+f"/{folder}({run})_*.png"))
         print(f'Total frames: {last_frame}')
 
-    image_path = f"{outDirPath}/{folder}/{folder}({run})_%04d.png"
-    filepath = f"{outDirPath}/{folder}/{folder}({run}).mp4"
+    image_path = f"{outputDirPath}/{folder}/{folder}({run})_%04d.png"
+    filepath = f"{outputDirPath}/{folder}/{folder}({run}).mp4"
 
     if (video_init_blend_mode == 'optical flow') and (animation_mode == 'Video Input'):
-        image_path = f"{outDirPath}/{folder}/flow/{folder}({run})_%04d.png"
-        filepath = f"{outDirPath}/{folder}/{folder}({run})_flow.mp4"
+        image_path = f"{outputDirPath}/{folder}/flow/{folder}({run})_%04d.png"
+        filepath = f"{outputDirPath}/{folder}/{folder}({run})_flow.mp4"
         if last_frame == 'final_frame':
             last_frame = len(glob(batchFolder+f"/flow/{folder}({run})_*.png"))
         flo_out = batchFolder+f"/flow"
@@ -2342,8 +2417,8 @@ def main() -> None:
                 pass
             warp(frame1, frame2, flo_path, blend=blend, weights_path=weights_path).save(batchFolder+f"/flow/{folder}({run})_{i:04}.png")
     if video_init_blend_mode == 'linear':
-        image_path = f"{outDirPath}/{folder}/blend/{folder}({run})_%04d.png"
-        filepath = f"{outDirPath}/{folder}/{folder}({run})_blend.mp4"
+        image_path = f"{outputDirPath}/{folder}/blend/{folder}({run})_%04d.png"
+        filepath = f"{outputDirPath}/{folder}/{folder}({run})_blend.mp4"
         if last_frame == 'final_frame':
             last_frame = len(glob(batchFolder+f"/blend/{folder}({run})_*.png"))
         blend_out = batchFolder+f"/blend"

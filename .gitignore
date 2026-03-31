@@ -15,7 +15,10 @@ open_clip/
 
 models/
 pretrained/
-images_out/
-init_images/
+output/
+input/
 
 progress.png
+
+output/
+input/
