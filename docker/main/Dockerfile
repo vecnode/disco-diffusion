@@ -26,7 +26,6 @@ COPY --from=modelprep /scratch/pretrained /workspace/code/pretrained
 # Clone Git repositories
 RUN git clone https://github.com/alembics/disco-diffusion.git && \
     git clone https://github.com/openai/CLIP && \
-    git clone https://github.com/assafshocher/ResizeRight.git && \
     git clone https://github.com/MSFTserver/pytorch3d-lite.git && \
     git clone https://github.com/isl-org/MiDaS.git && \
     git clone https://github.com/kostarion/guided-diffusion.git && \

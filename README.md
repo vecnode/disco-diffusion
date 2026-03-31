@@ -2,6 +2,8 @@
 
 A modern refactor of disco-diffusion (ongoing).
 
+Specific support for RTX Graphics Cards.
+
 ## Reproduce
 
 ```sh
@@ -68,12 +70,12 @@ CPU runs: set `USE_CPU = True` near the top of `src/discodiff/main.py`. On CUDA 
 - `**noise.py`** — Perlin initialization.
 - `**main_xform_utils.py`** — 3D warping / depth (MiDaS; optional AdaBins when enabled).
 - `**cuda_setup.py`** — Linux platform notice; CUDA startup logging; optional TF32 / cuDNN benchmark via env vars.
+- `**resize_v2.py`** — Continuous-domain image resize (NumPy / PyTorch); used by cutouts and related paths. No external clone.
 
 ### Mandatory third-party code (cloned beside the project if missing)
 
 - **guided-diffusion** — OpenAI DDPM/ADM (`create_model_and_diffusion`). Location: `./guided-diffusion/`.
 - **CLIP** — `CLIP.clip` text/image encoders. Location: `./CLIP/`; ViT/RN weights often under `~/.cache/torch`.
-- **ResizeRight** — `resize_right`. Location: `./ResizeRight/`.
 - **pytorch3d-lite** — `py3d_tools` (3D). Location: `./pytorch3d-lite/`.
 - **MiDaS** — Depth for 3D / warp. Location: `./MiDaS/`.
 

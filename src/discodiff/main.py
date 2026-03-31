@@ -119,13 +119,7 @@ def main(cli_overrides: dict | None = None) -> None:
         sys.path.append(f'{PROJECT_DIR}/guided-diffusion')
         from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
-    try:
-        from resize_right import resize
-    except ImportError:
-        if not os.path.exists("ResizeRight"):
-            gitclone("https://github.com/assafshocher/ResizeRight.git")
-        sys.path.append(f'{PROJECT_DIR}/ResizeRight')
-        from resize_right import resize
+    from .resize_v2 import resize
 
     try:
         import py3d_tools

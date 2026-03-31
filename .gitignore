@@ -7,7 +7,6 @@ venv/
 
 MiDaS/
 CLIP/
-ResizeRight/
 pytorch3d-lite/
 guided-diffusion/
 AdaBins/
