@@ -53,21 +53,13 @@ Setting | Description | Default
 
 
 import os
-import subprocess
 import sys
-
-# `discodiff.assets.downloads` imports `requests` — install before importing the package.
-print("[disco.py] Ensuring requests is available for discodiff", flush=True)
-subprocess.run(
-    [sys.executable, "-m", "pip", "install", "requests"],
-    stderr=subprocess.STDOUT,
-)
 
 _SRC_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
 if _SRC_ROOT not in sys.path:
     sys.path.insert(0, _SRC_ROOT)
 
-print("[disco.py] Starting runtime (see pip / discodiff messages below).", flush=True)
+print("[disco.py] Starting runtime.", flush=True)
 
 from discodiff.cli import parse_disco_argv
 from discodiff.main import main

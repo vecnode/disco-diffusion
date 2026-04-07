@@ -1,0 +1,40 @@
+[project]
+name = "disco-diffusion"
+version = "0.1.0"
+description = "Modern refactor of Disco Diffusion"
+readme = "README.md"
+requires-python = ">=3.9,<3.13"
+dependencies = [
+  "einops",
+  "ftfy",
+  "imageio",
+  "imageio-ffmpeg==0.4.4",
+  "ipywidgets",
+  "lpips",
+  "numpy",
+  "omegaconf",
+  "opencv-python",
+  "pandas",
+  "Pillow",
+  "pytorch-lightning",
+  "regex",
+  "requests",
+  "timm",
+  "torch",
+  "torch-fidelity",
+  "torchvision",
+  "tqdm",
+]
+
+[tool.uv]
+# Keep lock/install behavior explicit and reproducible for this repo.
+default-groups = []
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128" }]
+torchvision = [{ index = "pytorch-cu128" }]

@@ -25,3 +25,5 @@ input/
 docs/
 
 .github/
+.venv/
+venv/

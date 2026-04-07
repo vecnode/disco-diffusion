@@ -6,7 +6,7 @@ def main(cli_overrides: dict | None = None) -> None:
     import os
     import sys
 
-    print("[discodiff] Runtime starting (first pip steps can be slow; output streams live below).", flush=True)
+    print("[discodiff] Runtime starting.", flush=True)
 
     from .platform.device import warn_if_unsupported_platform
 
@@ -59,48 +59,6 @@ def main(cli_overrides: dict | None = None) -> None:
     createPath(model_path)
 
 
-
-    # Install PyTorch + torchvision from the official cu128 index first so wheels match a CUDA 12.8
-    # driver. Default PyPI torch builds may target newer CUDA runtimes than the host driver supports.
-    _PYTORCH_CUDA_INDEX = 'https://download.pytorch.org/whl/cu128'
-
-    print("[discodiff] pip: torch + torchvision (cu128 index)…", flush=True)
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "torch",
-            "torchvision",
-            "--index-url",
-            _PYTORCH_CUDA_INDEX,
-        ],
-        stderr=subprocess.STDOUT,
-    )
-
-    print("[discodiff] pip: runtime dependencies…", flush=True)
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "lpips",
-            "datetime",
-            "timm",
-            "ftfy",
-            "einops",
-            "pytorch-lightning",
-            "omegaconf",
-            "regex",
-            "opencv-python",
-            "pandas",
-            "requests",
-            "matplotlib",
-        ],
-        stderr=subprocess.STDOUT,
-    )
 
     try:
         from CLIP import clip
@@ -167,7 +125,6 @@ def main(cli_overrides: dict | None = None) -> None:
     from tqdm import tqdm, trange
     from datetime import datetime
     import numpy as np
-    import matplotlib.pyplot as plt
     import random
     import warnings
 
@@ -799,11 +756,6 @@ def main(cli_overrides: dict | None = None) -> None:
 
                               if vr_mode:
                                 generate_eye_views(TRANSLATION_SCALE, batchFolder, filename, frame_num, midas_model, midas_transform)
-
-
-              plt.plot(np.array(loss_values), 'r')
-
-
 
     def generate_eye_views(trans_scale,batchFolder,filename,frame_num,midas_model, midas_transform):
        for i in range(2):

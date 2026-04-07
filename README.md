@@ -7,26 +7,28 @@ Specific support for RTX Graphics Cards, tests under 24Gb.
 ## Reproduce
 
 ```sh
-# Create local env and run
-python3 -m venv venv
-source venv/bin/activate
-python3 disco.py
+# Install uv (Linux/macOS)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Sync environment from lockfile and run
+uv sync
+uv run disco.py
 # equivalent:
-cd src && python3 -m discodiff.main
+uv run python -m discodiff.main
 ```
 
 #### Text-to-image
 
 ```sh
 # 1) Baseline — square 512×512, prompt via stdin JSON
-python3 disco.py --width 512 --height 512 --text-prompts-json /dev/stdin <<'EOF'
+uv run disco.py --width 512 --height 512 --text-prompts-json /dev/stdin <<'EOF'
 {"0": ["trees and a beautiful field of the mountain"]}
 EOF
 ```
 
 ```sh
 # 2) Same resolution and prompt, fixed seed for reproducibility
-python3 disco.py --width 1024 --height 576 --set-seed 42 --steps 250 \
+uv run disco.py --width 1024 --height 576 --set-seed 42 --steps 250 \
   --text-prompts-json /dev/stdin <<'EOF'
 {"0": ["trees and a beautiful field of the mountain"]}
 EOF
@@ -36,7 +38,7 @@ EOF
 
 ```sh
 # Example A — single resolution, two prompts (holds last prompt after frame 30)
-python3 disco.py --generation-mode 2D --width 512 --height 512 --set-seed 42 --steps 100 \
+uv run disco.py --generation-mode 2D --width 512 --height 512 --set-seed 42 --steps 100 \
   --text-prompts-json /dev/stdin <<'EOF'
 {"0": ["establishing shot of a coastal lighthouse at dawn, atmospheric"], "30": ["same scene, golden hour, warm light on the cliffs"]}
 EOF
@@ -44,7 +46,7 @@ EOF
 
 ```sh
 # Example B — higher spatial resolution, explicit multi-step schedule (adjust `max_frames` in main when producing longer sequences)
-python3 disco.py --generation-mode 2D --width 1024 --height 576 --set-seed 42 --steps 250 \
+uv run disco.py --generation-mode 2D --width 1024 --height 576 --set-seed 42 --steps 250 \
   --text-prompts-json /dev/stdin <<'EOF'
 {"0": ["wide landscape, mountains and a field, misty morning"], "15": ["camera slowly dollying forward, same environment, sharper detail"]}
 EOF
@@ -54,7 +56,7 @@ EOF
 
 ```sh
 # Example A — short 3D smoke run (few steps; good for wiring/paths validation)
-python3 disco.py --generation-mode 3D --width 512 --height 512 --set-seed 42 --steps 50 \
+uv run disco.py --generation-mode 3D --width 512 --height 512 --set-seed 42 --steps 50 \
   --text-prompts-json /dev/stdin <<'EOF'
 {"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"]}
 EOF
@@ -62,7 +64,7 @@ EOF
 
 ```sh
 # Example B — longer 3D run (more steps; keep the prompt stable while camera motion comes from keyframes in main.py)
-python3 disco.py --generation-mode 3D --width 1024 --height 576 --set-seed 42 --steps 250 \
+uv run disco.py --generation-mode 3D --width 1024 --height 576 --set-seed 42 --steps 250 \
   --text-prompts-json /dev/stdin <<'EOF'
 {"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"]}
 EOF
@@ -94,19 +96,19 @@ You can let the runtime auto-select or force a device explicitly.
 
 ```sh
 # Auto-select (prefers RTX CUDA when available)
-python3 disco.py --device auto
+uv run disco.py --device auto
 
 # Explicit device requests
-python3 disco.py --device rtx
-python3 disco.py --device cuda:0
-python3 disco.py --device cpu
+uv run disco.py --device rtx
+uv run disco.py --device cuda:0
+uv run disco.py --device cpu
 ```
 
 Optional runtime profile examples:
 
 ```sh
 # Enables RTX-oriented backend defaults when compatible
-python3 disco.py --device auto --profile rtx
+uv run disco.py --device auto --profile rtx
 ```
 
 Env equivalents:
