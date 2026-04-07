@@ -43,7 +43,124 @@ def main(cli_overrides: dict | None = None) -> None:
             profile=cli_overrides.get("profile", run_config.profile),
         )
 
+    # System-impacting runtime configuration (consolidated)
     USE_ADABINS = False
+    USE_SECONDARY_DIFFUSION_MODEL = True
+
+    diffusion_model = "512x512_diffusion_uncond_finetune_008100"
+    diffusion_sampling_mode = 'ddim' # ['plms','ddim']
+    custom_path = 'xyz/ddpm/ema_0.9999_058000.pt'
+    check_model_SHA = False
+
+    use_checkpoint = True
+    ViTB32 = True
+    ViTB16 = True
+    ViTL14 = False
+    ViTL14_336px = False
+    RN101 = False
+    RN50 = True
+    RN50x4 = False
+    RN50x16 = False
+    RN50x64 = False
+
+    ViTB32_laion2b_e16 = False
+    ViTB32_laion400m_e31 = False
+    ViTB32_laion400m_32 = False
+    ViTB32quickgelu_laion400m_e31 = False
+    ViTB32quickgelu_laion400m_e32 = False
+    ViTB16_laion400m_e31 = False
+    ViTB16_laion400m_e32 = False
+    RN50_yffcc15m = False
+    RN50_cc12m = False
+    RN50_quickgelu_yfcc15m = False
+    RN50_quickgelu_cc12m = False
+    RN101_yfcc15m = False
+    RN101_quickgelu_yfcc15m = False
+
+    batch_name = 'example'
+    steps = 150 # [25,50,100,150,250,500,1000]
+    width_height_for_512x512_models = [512, 256] # [1280, 768]
+    width_height_for_256x256_models = [512, 448]
+
+    clip_guidance_scale = 5000
+    tv_scale = 0
+    range_scale = 10
+    sat_scale = 500 # 0 off
+    cutn_batches = 4
+    cutn = 16
+    skip_augs = False
+
+    video_init_steps = 100 # [25,50,100,150,250,500,1000]
+    video_init_clip_guidance_scale = 1000
+    video_init_tv_scale = 0.1
+    video_init_range_scale = 150
+    video_init_sat_scale = 300
+    video_init_cutn_batches = 4
+    video_init_skip_steps = 50
+
+    init_image = None
+    init_scale = 1000
+    skip_steps = 10
+
+    GENERATION_MODE = run_config.generation_mode  # Literal: "None" | "2D" | "3D" | "Video Input"
+
+    video_init_path = "init.mp4"
+    extract_nth_frame = 2
+    persistent_frame_output_in_batch_folder = True
+    video_init_seed_continuity = False
+    video_init_flow_warp = True
+    video_init_flow_blend = 0.999 # 0 - take next frame, 1 - take prev warped frame
+    video_init_check_consistency = False
+    video_init_blend_mode = "optical flow" # ['None', 'linear', 'optical flow']
+
+    key_frames = True
+    max_frames = 10000
+    interp_spline = 'Linear' # ['Linear','Quadratic','Cubic']
+    angle = "0:(0)"
+    zoom = "0: (1), 10: (1.05)"
+    translation_x = "0: (0)"
+    translation_y = "0: (0)"
+    translation_z = "0: (10.0)"
+    rotation_3d_x = "0: (0)"
+    rotation_3d_y = "0: (0)"
+    rotation_3d_z = "0: (0)"
+    midas_depth_model = "dpt_large"
+    midas_weight = 0.3
+    near_plane = 200
+    far_plane = 10000
+    fov = 40
+    padding_mode = 'border'
+    sampling_mode = 'bicubic'
+
+    turbo_mode = False
+    turbo_steps = "3" # ["2","3","4","5","6"]
+    turbo_preroll = 10 # frames
+
+    frames_scale = 1500
+    frames_skip_steps = '60%'
+    video_init_frames_scale = 15000
+    video_init_frames_skip_steps = '70%'
+
+    perlin_init = False
+    perlin_mode = 'mixed' # ['mixed', 'color', 'gray']
+    set_seed = 'random_seed'
+    eta = 0.8
+    clamp_grad = True
+    clamp_max = 0.05
+
+    randomize_class = True
+    clip_denoised = False
+    fuzzy_prompt = False
+    rand_mag = 0.05
+
+    use_vertical_symmetry = False
+    use_horizontal_symmetry = False
+    transformation_percent = [0.09]
+
+    display_rate = 20
+    n_batches = 50
+    if GENERATION_MODE == 'Video Input':
+        steps = video_init_steps
 
     # geometry.warp reads MAIN_USE_ADABINS before attempting AdaBins (MiDaS-only when false).
     os.environ['MAIN_USE_ADABINS'] = '1' if USE_ADABINS else '0'
@@ -1037,48 +1154,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
 
     # Models Settings (note: For pixel art, the best is pixelartdiffusion_expanded)
-    diffusion_model = "512x512_diffusion_uncond_finetune_008100" 
     # ["256x256_diffusion_uncond", "512x512_diffusion_uncond_finetune_008100", "portrait_generator_v001", "pixelartdiffusion_expanded", "pixel_art_diffusion_hard_256", "pixel_art_diffusion_soft_256", "pixelartdiffusion4k", "watercolordiffusion_2", "watercolordiffusion", "PulpSciFiDiffusion", "custom"]
-
-    USE_SECONDARY_DIFFUSION_MODEL = True
-
-    diffusion_sampling_mode = 'ddim' # ['plms','ddim']
-
-
-    custom_path = 'xyz/ddpm/ema_0.9999_058000.pt'
-
-    # CLIP settings
-
-    use_checkpoint = True 
-    ViTB32 = True   
-    ViTB16 = True 
-    ViTL14 = False 
-    ViTL14_336px = False 
-    RN101 = False 
-    RN50 = True 
-    RN50x4 = False 
-    RN50x16 = False 
-    RN50x64 = False 
-
-
-    # OpenCLIP settings
-
-    ViTB32_laion2b_e16 = False 
-    ViTB32_laion400m_e31 = False 
-    ViTB32_laion400m_32 = False 
-    ViTB32quickgelu_laion400m_e31 = False 
-    ViTB32quickgelu_laion400m_e32 = False 
-    ViTB16_laion400m_e31 = False 
-    ViTB16_laion400m_e32 = False 
-    RN50_yffcc15m = False 
-    RN50_cc12m = False 
-    RN50_quickgelu_yfcc15m = False 
-    RN50_quickgelu_cc12m = False 
-    RN101_yfcc15m = False 
-    RN101_quickgelu_yfcc15m = False 
-
-    # If you're having issues with model downloads, check this to compare SHA's:
-    check_model_SHA = False 
 
     diff_model_map = {
         '256x256_diffusion_uncond': { 'downloaded': False, 'sha': 'a37c32fffd316cd494cf3f35b339936debdc1576dad13fe57c42399a5dbc78b1', 'uri_list': ['https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt', 'https://www.dropbox.com/s/9tqnqo930mpnpcn/256x256_diffusion_uncond.pt'] },
@@ -1234,44 +1310,6 @@ def main(cli_overrides: dict | None = None) -> None:
           })
 
 
-
-
-
-    batch_name = 'example' 
-    steps = 150 # [25,50,100,150,250,500,1000]
-
-    width_height_for_512x512_models = [512, 256] # [1280, 768] 
-
-    clip_guidance_scale = 5000 
-    tv_scale = 0
-    range_scale = 10
-    sat_scale = 500 # 0 off
-    cutn_batches = 4
-    cutn = 16
-    skip_augs = False
-
-
-
-    # Image dimensions to be used for 256x256 models (e.g. pixelart models):**
-    width_height_for_256x256_models = [512, 448] 
-
-
-
-    video_init_steps = 100 # [25,50,100,150,250,500,1000]
-    video_init_clip_guidance_scale = 1000
-    video_init_tv_scale = 0.1
-    video_init_range_scale = 150
-    video_init_sat_scale = 300
-    video_init_cutn_batches = 4
-    video_init_skip_steps = 50 
-
-
-
-    init_image = None
-    init_scale = 1000
-    skip_steps = 10
-
-
     width_height = width_height_for_256x256_models if diffusion_model in diffusion_models_256x256_list else width_height_for_512x512_models
 
 
@@ -1299,24 +1337,7 @@ def main(cli_overrides: dict | None = None) -> None:
     """
 
 
-    GENERATION_MODE = run_config.generation_mode  # Literal: "None" | "2D" | "3D" | "Video Input"
-
-
-
-
-
     # Video Input Settings
-
-    video_init_path = "init.mp4" 
-    extract_nth_frame = 2
-    persistent_frame_output_in_batch_folder = True
-    video_init_seed_continuity = False
-    # Video Optical Flow Settings
-    video_init_flow_warp = True
-    # Call optical flow from video frames and warp prev frame with flow
-    video_init_flow_blend =  0.999 #0 - take next frame, 1 - take prev warped frame
-    video_init_check_consistency = False #Insert param here when ready
-    video_init_blend_mode = "optical flow" # ['None', 'linear', 'optical flow']
     # Call optical flow from video frames and warp prev frame with flow
     if GENERATION_MODE == "Video Input":
         if persistent_frame_output_in_batch_folder:
@@ -1330,7 +1351,7 @@ def main(cli_overrides: dict | None = None) -> None:
                 f.unlink()
         except:
             print('')
-        vf = f'select=not(mod(n\,{extract_nth_frame}))'
+        vf = f'select=not(mod(n\\,{extract_nth_frame}))'
         if os.path.exists(video_init_path):
             subprocess.run(['ffmpeg', '-i', f'{video_init_path}', '-vf', f'{vf}', '-vsync', 'vfr', '-q:v', '2', '-loglevel', 'error', '-stats', f'{videoFramesFolder}/%04d.jpg'], stdout=subprocess.PIPE).stdout.decode('utf-8')
         else: 
@@ -1342,36 +1363,8 @@ def main(cli_overrides: dict | None = None) -> None:
     # 2D Animation Settings:**
     # `zoom` is a multiplier of dimensions, 1 is no zoom.
     # All rotations are provided in degrees.
-
-
-    key_frames = True
-    max_frames = 10000
-
     if GENERATION_MODE == "Video Input":
         max_frames = len(glob(f'{videoFramesFolder}/*.jpg'))
-
-    interp_spline = 'Linear' # Do not change, currently will not look good. param ['Linear','Quadratic','Cubic']{type:"string"}
-    angle = "0:(0)"
-    zoom = "0: (1), 10: (1.05)"
-    translation_x = "0: (0)"
-    translation_y = "0: (0)"
-    translation_z = "0: (10.0)"
-    rotation_3d_x = "0: (0)"
-    rotation_3d_y = "0: (0)"
-    rotation_3d_z = "0: (0)"
-    midas_depth_model = "dpt_large"
-    midas_weight = 0.3
-    near_plane = 200
-    far_plane = 10000
-    fov = 40
-    padding_mode = 'border'
-    sampling_mode = 'bicubic'
-
-    #=== TURBO MODE
-
-    turbo_mode = False
-    turbo_steps = "3" # ["2","3","4","5","6"]
-    turbo_preroll = 10 # frames
 
     # Insist that turbo be used only with 3D anim.
     if turbo_mode and GENERATION_MODE != '3D':
@@ -1379,27 +1372,6 @@ def main(cli_overrides: dict | None = None) -> None:
         print('Turbo mode only available with 3D animations. Disabling Turbo.')
         print('=====')
         turbo_mode = False
-
-
-
-
-    # Coherency Settings
-
-    #@markdown `frame_scale` tries to guide the new frame to looking like the old one. A good default is 1500.
-
-    frames_scale = 1500 
-
-    #@markdown `frame_skip_steps` will blur the previous frame - higher values will flicker less but struggle to add enough new detail to zoom into.
-    frames_skip_steps = '60%' #  ['40%', '50%', '60%', '70%', '80%'] {type: 'string'}
-
-    # Video Init Coherency Settings
-
-    # `frame_scale` tries to guide the new frame to looking like the old one. A good default is 1500.
-    video_init_frames_scale = 15000 
-    # `frame_skip_steps` will blur the previous frame - higher values will flicker less but struggle to add enough new detail to zoom into.
-    video_init_frames_skip_steps = '70%' #  ['40%', '50%', '60%', '70%', '80%'] {type: 'string'}
-
-    
 
     from .config.keyframes import get_inbetweens, parse_key_frames
 
@@ -1774,25 +1746,8 @@ def main(cli_overrides: dict | None = None) -> None:
         partialFolder = f'{batchFolder}/partials'
         createPath(partialFolder)
 
-
-
     # There are a few extra advanced settings available if you double click this cell.
     # Perlin init will replace your init, so uncheck if using one.
-
-    perlin_init = False 
-    perlin_mode = 'mixed' # ['mixed', 'color', 'gray']
-    set_seed = 'random_seed'
-    eta = 0.8
-    clamp_grad = True
-    clamp_max = 0.05
-
-
-    ### EXTRA ADVANCED SETTINGS:
-
-    randomize_class = True
-    clip_denoised = False
-    fuzzy_prompt = False
-    rand_mag = 0.05
 
 
 
@@ -1829,14 +1784,7 @@ def main(cli_overrides: dict | None = None) -> None:
         cut_icgray_p = watercolor_cut_icgray_p
 
 
-
-
     # Transformation Settings
-
-    use_vertical_symmetry = False
-    use_horizontal_symmetry = False
-    transformation_percent = [0.09]
-
 
 
     """
@@ -1848,7 +1796,7 @@ def main(cli_overrides: dict | None = None) -> None:
     # Note: If using a pixelart diffusion model, try adding "#pixelart" to the end of the prompt for a stronger effect. It'll tend to work a lot better!
     text_prompts = {
         0: ["A beautiful painting of a singular lighthouse, shining its light across a tumultuous sea of blood by greg rutkowski and thomas kinkade, Trending on artstation.", "yellow color scheme"],
-        100: ["This set of prompts start at frame 100","This prompt has weight five:5"],
+        100: ["This set of prompts start at frame 100", "This prompt has weight five:5"],
     }
 
     image_prompts = {
@@ -1863,12 +1811,6 @@ def main(cli_overrides: dict | None = None) -> None:
 
     # Do the Run!
     # `n_batches` ignored with animation modes.
-
-    display_rate = 20
-    n_batches = 50
-
-    if GENERATION_MODE == 'Video Input':
-        steps = video_init_steps
 
     def _apply_cli_overrides(ov: dict | None) -> None:
         nonlocal clip_guidance_scale, tv_scale, range_scale, sat_scale, cutn, cutn_batches
