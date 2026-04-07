@@ -139,6 +139,20 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         metavar="MODE",
         help='Pipeline mode (same as GENERATION_MODE in main.py). Overrides DISCO_GENERATION_MODE.',
     )
+    p.add_argument(
+        "--device",
+        type=str,
+        dest="device",
+        metavar="DEV",
+        help="Runtime device selector: auto, rtx, cpu, cuda, cuda:N, or mps.",
+    )
+    p.add_argument(
+        "--profile",
+        type=str,
+        dest="profile",
+        metavar="NAME",
+        help="Runtime profile for backend defaults (for example: default, rtx, rtx-safe, rtx-fast).",
+    )
 
     ns = p.parse_args(argv)
     ov: dict[str, Any] = {}
@@ -194,5 +208,11 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
 
     if ns.generation_mode is not None:
         ov["GENERATION_MODE"] = ns.generation_mode
+
+    if ns.device is not None:
+        ov["device"] = ns.device
+
+    if ns.profile is not None:
+        ov["profile"] = ns.profile
 
     return ov

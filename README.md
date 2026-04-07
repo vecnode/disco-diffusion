@@ -72,6 +72,47 @@ EOF
 
 **Linux tested.** This repo is maintained and expected to run on **glibc-based Linux** with a working **NVIDIA stack** (proprietary driver so `nvidia-smi` reports your GPU). Other OSes are currently out of scope; if you run elsewhere, you may see a stderr warning - set `DISCO_ALLOW_NON_LINUX=1` to suppress it (still unsupported).
 
+### RTX and OS Device Layer
+
+Device selection is centralized in `src/discodiff/platform/device.py`.
+
+OS / accelerator | Status | Notes
+--- | --- | ---
+Linux + NVIDIA CUDA (RTX preferred) | Supported | `auto` prefers RTX-named CUDA devices, then falls back to first CUDA GPU.
+Windows + NVIDIA CUDA | Best effort | Works through the same device layer; Linux remains the tested target.
+macOS + MPS | Best effort | No RTX path on macOS; `auto` can select `mps` when available.
+CPU fallback | Supported | Used when no requested accelerator is available.
+
+Known caveats:
+- RTX detection is name-based (`RTX` in GPU name) and may treat non-RTX CUDA devices as generic CUDA.
+- Driver/toolkit mismatches can still fail at runtime even when device selection succeeds.
+- Non-Linux runs are intentionally warned unless `DISCO_ALLOW_NON_LINUX=1` is set.
+
+### Device Selection
+
+You can let the runtime auto-select or force a device explicitly.
+
+```sh
+# Auto-select (prefers RTX CUDA when available)
+python3 disco.py --device auto
+
+# Explicit device requests
+python3 disco.py --device rtx
+python3 disco.py --device cuda:0
+python3 disco.py --device cpu
+```
+
+Optional runtime profile examples:
+
+```sh
+# Enables RTX-oriented backend defaults when compatible
+python3 disco.py --device auto --profile rtx
+```
+
+Env equivalents:
+- `DISCO_DEVICE` (`auto`, `rtx`, `cpu`, `cuda`, `cuda:N`, `mps`)
+- `DISCO_PROFILE` (`default`, `rtx`, `rtx-safe`, `rtx-fast`)
+
 ## RunConfig
 
 Top-level runtime settings are now centralized in `RunConfig` at `src/discodiff/config/settings.py`.
@@ -79,7 +120,7 @@ Top-level runtime settings are now centralized in `RunConfig` at `src/discodiff/
 Setting | Env var | Default | Notes
 --- | --- | --- | ---
 `output_dir` | `DISCO_OUTPUT_DIR` | `<repo>/output` | Output root for generated assets.
-`device` | `DISCO_DEVICE` | `auto` | `auto` resolves to CUDA when available, else CPU.
+`device` | `DISCO_DEVICE` | `auto` | Selects runtime device (`auto`, `rtx`, `cpu`, `cuda`, `cuda:N`, `mps`).
 `seed` | `DISCO_SEED` | `None` | Optional integer; runtime still supports random seed behavior.
 `generation_mode` | `DISCO_GENERATION_MODE` | `None` | One of `None`, `2D`, `3D`, `Video Input`.
-`profile` | `DISCO_PROFILE` | `default` | Reserved label for future preset/profile behavior.
+`profile` | `DISCO_PROFILE` | `default` | Backend defaults profile (`default`, `rtx`, `rtx-safe`, `rtx-fast`).

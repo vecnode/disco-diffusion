@@ -8,9 +8,9 @@ def main(cli_overrides: dict | None = None) -> None:
 
     print("[discodiff] Runtime starting (first pip steps can be slow; output streams live below).", flush=True)
 
-    from .platform.cuda import warn_if_non_linux_platform
+    from .platform.device import warn_if_unsupported_platform
 
-    warn_if_non_linux_platform()
+    warn_if_unsupported_platform()
 
     import pathlib
     import shutil
@@ -36,6 +36,12 @@ def main(cli_overrides: dict | None = None) -> None:
     from .config import RunConfig, apply_runtime_overrides
 
     run_config = RunConfig.from_env(ROOT_PATH)
+    if cli_overrides:
+        run_config = apply_runtime_overrides(
+            run_config,
+            device=cli_overrides.get("device", run_config.device),
+            profile=cli_overrides.get("profile", run_config.profile),
+        )
 
     USE_ADABINS = False
 
@@ -213,21 +219,14 @@ def main(cli_overrides: dict | None = None) -> None:
         from infer import InferenceHelper
         MAX_ADABINS_AREA = 500000
 
-    requested_device = run_config.device.strip().lower()
-    if requested_device == 'auto':
-        DEVICE = torch.device('cuda:0' if (torch.cuda.is_available() and not USE_CPU) else 'cpu')
-    else:
-        try:
-            DEVICE = torch.device(run_config.device)
-        except (TypeError, RuntimeError, ValueError):
-            print(f"[config] Invalid DISCO_DEVICE={run_config.device!r}; falling back to auto.", flush=True)
-            DEVICE = torch.device('cuda:0' if (torch.cuda.is_available() and not USE_CPU) else 'cpu')
+    from .platform.device import apply_backend_defaults, log_device_selection, resolve_runtime_device
 
-    if not USE_CPU and DEVICE.type == 'cuda' and not torch.cuda.is_available():
-        print(f"[config] Requested CUDA device {DEVICE}, but CUDA is unavailable. Falling back to CPU.", flush=True)
-        DEVICE = torch.device('cpu')
+    device_selection = resolve_runtime_device(run_config.device, use_cpu=USE_CPU)
+    DEVICE = torch.device(device_selection.torch_device)
+    apply_backend_defaults(device_selection, profile=run_config.profile)
+    log_device_selection(device_selection)
 
-    run_config = apply_runtime_overrides(run_config, device=str(DEVICE))
+    run_config = apply_runtime_overrides(run_config, device=device_selection.torch_device)
     print('Using device:', DEVICE)
     device = DEVICE # At least one of the modules expects this name..
 
@@ -235,12 +234,6 @@ def main(cli_overrides: dict | None = None) -> None:
         if torch.cuda.get_device_capability(DEVICE) == (8, 0):  # A100 fix thanks to Emad
             print('Disabling CUDNN for A100 gpu', file=sys.stderr)
             torch.backends.cudnn.enabled = False
-
-    from .platform.cuda import apply_env_tf32, log_cuda_device
-
-    if not USE_CPU and DEVICE.type == 'cuda':
-        log_cuda_device(DEVICE)
-        apply_env_tf32(DEVICE)
 
     ### Define Midas functions
 
@@ -268,7 +261,7 @@ def main(cli_overrides: dict | None = None) -> None:
         resize_mode = None
         normalization = None
 
-        print(f"Initializing MiDaS '{midas_model_type}' depth model...")
+        print(f"Initializing MiDaS '{midas_model_type}' depth model")
         # load network
         midas_model_path = default_models[midas_model_type]
 

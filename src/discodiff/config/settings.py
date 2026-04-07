@@ -64,6 +64,7 @@ def apply_runtime_overrides(
     device: str | None = None,
     seed: int | None = None,
     generation_mode: str | None = None,
+    profile: str | None = None,
 ) -> RunConfig:
     """Return an updated config with runtime-resolved fields."""
     return replace(
@@ -71,4 +72,5 @@ def apply_runtime_overrides(
         device=cfg.device if device is None else device,
         seed=cfg.seed if seed is None else seed,
         generation_mode=cfg.generation_mode if generation_mode is None else generation_mode,
+        profile=cfg.profile if profile is None else profile,
     )
