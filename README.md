@@ -83,5 +83,3 @@ Setting | Env var | Default | Notes
 `seed` | `DISCO_SEED` | `None` | Optional integer; runtime still supports random seed behavior.
 `generation_mode` | `DISCO_GENERATION_MODE` | `None` | One of `None`, `2D`, `3D`, `Video Input`.
 `profile` | `DISCO_PROFILE` | `default` | Reserved label for future preset/profile behavior.
-
-s
