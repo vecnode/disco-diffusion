@@ -7,9 +7,9 @@ config, loaded once before the diffusion run starts.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 _ALLOWED_GENERATION_MODES = {"None", "2D", "3D", "Video Input"}
 
@@ -23,6 +23,7 @@ class RunConfig:
     seed: Optional[int] = None
     generation_mode: str = "None"
     profile: str = "default"
+    runtime_values: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_env(cls, root_path: str | Path) -> "RunConfig":
@@ -37,7 +38,12 @@ class RunConfig:
             generation_mode = "None"
 
         seed_raw = os.environ.get("DISCO_SEED", "").strip()
-        seed: Optional[int] = int(seed_raw) if seed_raw else None
+        seed: Optional[int] = None
+        if seed_raw:
+            try:
+                seed = int(seed_raw)
+            except ValueError:
+                seed = None
 
         return cls(
             output_dir=output_dir,
@@ -46,6 +52,10 @@ class RunConfig:
             generation_mode=generation_mode,
             profile=profile,
         )
+
+    def with_runtime_values(self, values: Mapping[str, Any]) -> "RunConfig":
+        """Attach a snapshot of runtime values used for legacy args building."""
+        return replace(self, runtime_values=dict(values))
 
 
 def apply_runtime_overrides(

@@ -2149,7 +2149,8 @@ def main(cli_overrides: dict | None = None) -> None:
 
     from .config import build_run_args_namespace
 
-    args = build_run_args_namespace(locals())
+    run_config = run_config.with_runtime_values(locals())
+    args = build_run_args_namespace(run_config)
 
     print('Prepping model')
 

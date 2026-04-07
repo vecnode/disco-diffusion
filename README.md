@@ -84,4 +84,4 @@ Setting | Env var | Default | Notes
 `generation_mode` | `DISCO_GENERATION_MODE` | `None` | One of `None`, `2D`, `3D`, `Video Input`.
 `profile` | `DISCO_PROFILE` | `default` | Reserved label for future preset/profile behavior.
 
-This is intentionally a small, behavior-preserving first step toward full settings centralization.
+s
