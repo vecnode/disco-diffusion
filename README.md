@@ -71,3 +71,17 @@ EOF
 ## Platform
 
 **Linux tested.** This repo is maintained and expected to run on **glibc-based Linux** with a working **NVIDIA stack** (proprietary driver so `nvidia-smi` reports your GPU). Other OSes are currently out of scope; if you run elsewhere, you may see a stderr warning - set `DISCO_ALLOW_NON_LINUX=1` to suppress it (still unsupported).
+
+## RunConfig
+
+Top-level runtime settings are now centralized in `RunConfig` at `src/discodiff/config/settings.py`.
+
+Setting | Env var | Default | Notes
+--- | --- | --- | ---
+`output_dir` | `DISCO_OUTPUT_DIR` | `<repo>/output` | Output root for generated assets.
+`device` | `DISCO_DEVICE` | `auto` | `auto` resolves to CUDA when available, else CPU.
+`seed` | `DISCO_SEED` | `None` | Optional integer; runtime still supports random seed behavior.
+`generation_mode` | `DISCO_GENERATION_MODE` | `None` | One of `None`, `2D`, `3D`, `Video Input`.
+`profile` | `DISCO_PROFILE` | `default` | Reserved label for future preset/profile behavior.
+
+This is intentionally a small, behavior-preserving first step toward full settings centralization.

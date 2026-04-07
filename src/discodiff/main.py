@@ -33,6 +33,9 @@ def main(cli_overrides: dict | None = None) -> None:
     USE_CPU = False 
 
     PROJECT_DIR = os.path.abspath(os.getcwd())
+    from .config import RunConfig, apply_runtime_overrides
+
+    run_config = RunConfig.from_env(ROOT_PATH)
 
     USE_ADABINS = False
 
@@ -43,7 +46,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
     inputDirPath = f'{ROOT_PATH}/input'
     createPath(inputDirPath)
-    outputDirPath = f'{ROOT_PATH}/output'
+    outputDirPath = str(run_config.output_dir)
     createPath(outputDirPath)
 
     model_path = f'{ROOT_PATH}/models'
@@ -210,7 +213,21 @@ def main(cli_overrides: dict | None = None) -> None:
         from infer import InferenceHelper
         MAX_ADABINS_AREA = 500000
 
-    DEVICE = torch.device('cuda:0' if (torch.cuda.is_available() and not USE_CPU) else 'cpu')
+    requested_device = run_config.device.strip().lower()
+    if requested_device == 'auto':
+        DEVICE = torch.device('cuda:0' if (torch.cuda.is_available() and not USE_CPU) else 'cpu')
+    else:
+        try:
+            DEVICE = torch.device(run_config.device)
+        except (TypeError, RuntimeError, ValueError):
+            print(f"[config] Invalid DISCO_DEVICE={run_config.device!r}; falling back to auto.", flush=True)
+            DEVICE = torch.device('cuda:0' if (torch.cuda.is_available() and not USE_CPU) else 'cpu')
+
+    if not USE_CPU and DEVICE.type == 'cuda' and not torch.cuda.is_available():
+        print(f"[config] Requested CUDA device {DEVICE}, but CUDA is unavailable. Falling back to CPU.", flush=True)
+        DEVICE = torch.device('cpu')
+
+    run_config = apply_runtime_overrides(run_config, device=str(DEVICE))
     print('Using device:', DEVICE)
     device = DEVICE # At least one of the modules expects this name..
 
@@ -1356,10 +1373,7 @@ def main(cli_overrides: dict | None = None) -> None:
     """
 
 
-    GENERATION_MODE = "None"  # Literal: "None" | "2D" | "3D" | "Video Input"
-    _disc_go_mode = os.environ.get("DISCO_GENERATION_MODE", "").strip()
-    if _disc_go_mode:
-        GENERATION_MODE = _disc_go_mode
+    GENERATION_MODE = run_config.generation_mode  # Literal: "None" | "2D" | "3D" | "Video Input"
 
 
 
@@ -2121,6 +2135,17 @@ def main(cli_overrides: dict | None = None) -> None:
         print(f'Using random seed: {seed}')
     else:
         seed = int(set_seed)
+
+    run_config = apply_runtime_overrides(
+        run_config,
+        generation_mode=GENERATION_MODE,
+        seed=seed,
+    )
+    print(
+        f"[config] profile={run_config.profile} mode={run_config.generation_mode} "
+        f"device={run_config.device} output_dir={run_config.output_dir} seed={run_config.seed}",
+        flush=True,
+    )
 
     from .config import build_run_args_namespace
 
