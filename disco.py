@@ -1,6 +1,4 @@
 
-# Disco Diffusion v5.7 - Now with MiDaS (3D mode) not being broken
-
 
 """
 

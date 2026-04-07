@@ -458,8 +458,6 @@ def main(cli_overrides: dict | None = None) -> None:
                     blendedImage = cv2.addWeighted(newWarpedImg, blend_factor, oldWarpedImg,1-blend_factor, 0.0)
                     cv2.imwrite(f'{batchFolder}/{filename}',blendedImage)
                     next_step_pil.save(f'{img_filepath}') # save it also as prev_frame to feed next iteration
-                    if vr_mode:
-                      generate_eye_views(TRANSLATION_SCALE,batchFolder,filename,frame_num,midas_model, midas_transform)
                     continue
                   else:
                     #if not a skip frame, will run diffusion and need to blend.
@@ -754,23 +752,6 @@ def main(cli_overrides: dict | None = None) -> None:
                               else:
                                 image.save(f'{batchFolder}/{filename}')
 
-                              if vr_mode:
-                                generate_eye_views(TRANSLATION_SCALE, batchFolder, filename, frame_num, midas_model, midas_transform)
-
-    def generate_eye_views(trans_scale,batchFolder,filename,frame_num,midas_model, midas_transform):
-       for i in range(2):
-          theta = vr_eye_angle * (math.pi/180)
-          ray_origin = math.cos(theta) * vr_ipd / 2 * (-1.0 if i==0 else 1.0)
-          ray_rotation = (theta if i==0 else -theta)
-          translate_xyz = [-(ray_origin)*trans_scale, 0,0]
-          rotate_xyz = [0, (ray_rotation), 0]
-          rot_mat = p3dT.euler_angles_to_matrix(torch.tensor(rotate_xyz, device=device), "XYZ").unsqueeze(0)
-          transformed_image = dxf.transform_image_3d(f'{batchFolder}/{filename}', midas_model, midas_transform, DEVICE,
-                                                          rot_mat, translate_xyz, args.near_plane, args.far_plane,
-                                                          args.fov, padding_mode=args.padding_mode,
-                                                          sampling_mode=args.sampling_mode, midas_weight=args.midas_weight,spherical=True)
-          eye_file_path = batchFolder+f"/frame_{frame_num:04}" + ('_l' if i==0 else '_r')+'.png'
-          transformed_image.save(eye_file_path)
 
 
 
@@ -1418,31 +1399,7 @@ def main(cli_overrides: dict | None = None) -> None:
     # `frame_skip_steps` will blur the previous frame - higher values will flicker less but struggle to add enough new detail to zoom into.
     video_init_frames_skip_steps = '70%' #  ['40%', '50%', '60%', '70%', '80%'] {type: 'string'}
 
-    #======= VR MODE
-
-    #@markdown ####**VR Mode (3D anim only):**
-    #@markdown Enables stereo rendering of left/right eye views (supporting Turbo) which use a different (fish-eye) camera projection matrix.   
-    #@markdown Note the images you're prompting will work better if they have some inherent wide-angle aspect
-    #@markdown The generated images will need to be combined into left/right videos. These can then be stitched into the VR180 format.
-    #@markdown Google made the VR180 Creator tool but subsequently stopped supporting it. It's available for download in a few places including https://www.patrickgrunwald.de/vr180-creator-download
-    #@markdown The tool is not only good for stitching (videos and photos) but also for adding the correct metadata into existing videos, which is needed for services like YouTube to identify the format correctly.
-    #@markdown Watching YouTube VR videos isn't necessarily the easiest depending on your headset. For instance Oculus have a dedicated media studio and store which makes the files easier to access on a Quest https://creator.oculus.com/manage/mediastudio/
-    #@markdown 
-    #@markdown The command to get ffmpeg to concat your frames for each eye is in the form: `ffmpeg -framerate 15 -i frame_%4d_l.png l.mp4` (repeat for r)
-
-    vr_mode = False 
-    #@markdown `vr_eye_angle` is the y-axis rotation of the eyes towards the center
-    vr_eye_angle = 0.5 
-    #@markdown interpupillary distance (between the eyes)
-    vr_ipd = 5.0 
-
-    #insist VR be used only w 3d anim.
-    if vr_mode and GENERATION_MODE != '3D':
-        print('=====')
-        print('VR mode only available with 3D animations. Disabling VR.')
-        print('=====')
-        vr_mode = False
-
+    
 
     from .config.keyframes import get_inbetweens, parse_key_frames
 
