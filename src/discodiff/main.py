@@ -198,7 +198,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
     from .image.resize import resize
     from .guidance.clip_cuts import MakeCutouts, MakeCutoutsDango, range_loss, spherical_dist_loss, tv_loss
-    from .diffusion.sampling import iter_clip_guided_samples, timestep_after_skip
+    from .diffusion import iter_clip_guided_samples, timestep_after_skip
 
     try:
         from midas.dpt_depth import DPTDepthModel
@@ -1887,11 +1887,8 @@ def main(cli_overrides: dict | None = None) -> None:
     _apply_cli_overrides(cli_overrides)
 
     #Update Model Settings
-    from .diffusion import (
-        diffusion_steps_count,
-        load_primary_diffusion_model,
-        timestep_respacing_ddim,
-    )
+    from .diffusion import load_primary_diffusion_model
+    from .guided_diffusion.script_util import diffusion_steps_count, timestep_respacing_ddim
 
     timestep_respacing = timestep_respacing_ddim(steps)
     diffusion_steps = diffusion_steps_count(steps)
