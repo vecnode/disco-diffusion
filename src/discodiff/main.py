@@ -193,13 +193,8 @@ def main(cli_overrides: dict | None = None) -> None:
         sys.path.append(f'{PROJECT_DIR}/open_clip/src')
         import open_clip
 
-    try:
-        from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
-    except ImportError:
-        if not os.path.exists("guided-diffusion"):
-            gitclone("https://github.com/kostarion/guided-diffusion")
-        sys.path.append(f'{PROJECT_DIR}/guided-diffusion')
-        from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
+    # guided-diffusion is vendored into discodiff as an internal module.
+    from .guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
     from .image.resize import resize
     from .guidance.clip_cuts import MakeCutouts, MakeCutoutsDango, range_loss, spherical_dist_loss, tv_loss
