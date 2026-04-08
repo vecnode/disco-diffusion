@@ -82,11 +82,11 @@ def main(cli_overrides: dict | None = None) -> None:
     width_height_for_512x512_models = [512, 256] # [1280, 768]
     width_height_for_256x256_models = [512, 448]
 
-    clip_guidance_scale = 5000
-    tv_scale = 0
-    range_scale = 10
-    sat_scale = 500 # 0 off
-    cutn_batches = 4
+    clip_guidance_scale = 1000
+    tv_scale = 150
+    range_scale = 150
+    sat_scale = 0
+    cutn_batches = 2
     cutn = 16
     skip_augs = False
 
@@ -159,6 +159,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
     display_rate = 20
     n_batches = 50
+
     if GENERATION_MODE == 'Video Input':
         steps = video_init_steps
 
@@ -196,7 +197,6 @@ def main(cli_overrides: dict | None = None) -> None:
     # guided-diffusion is vendored into discodiff as an internal module.
     from .guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
-    from .image.resize import resize
     from .guidance.clip_cuts import MakeCutouts, MakeCutoutsDango, range_loss, spherical_dist_loss, tv_loss
     from .diffusion import iter_clip_guided_samples, timestep_after_skip
 
@@ -591,10 +591,10 @@ def main(cli_overrides: dict | None = None) -> None:
                 skip_steps = args.video_init_skip_steps
                 init_image = f'{videoFramesFolder}/{frame_num+1:04}.jpg'
               if frame_num > 0: 
-                prev = PIL.Image.open(batchFolder+f"/{batch_name}({batchNum})_{frame_num-1:04}.png")
+                prev = Image.open(batchFolder+f"/{batch_name}({batchNum})_{frame_num-1:04}.png")
 
                 frame1_path = f'{videoFramesFolder}/{frame_num:04}.jpg'
-                frame2 = PIL.Image.open(f'{videoFramesFolder}/{frame_num+1:04}.jpg')
+                frame2 = Image.open(f'{videoFramesFolder}/{frame_num+1:04}.jpg')
                 flo_path = f"/{flo_folder}/{frame1_path.split('/')[-1]}.npy"
 
                 init_image = 'warped.png'
@@ -1266,6 +1266,7 @@ def main(cli_overrides: dict | None = None) -> None:
     if RN50x16: clip_models.append(clip.load('RN50x16', jit=False)[0].eval().requires_grad_(False).to(device))
     if RN50x64: clip_models.append(clip.load('RN50x64', jit=False)[0].eval().requires_grad_(False).to(device))
     if RN101: clip_models.append(clip.load('RN101', jit=False)[0].eval().requires_grad_(False).to(device))
+    
     if ViTB32_laion2b_e16: clip_models.append(open_clip.create_model('ViT-B-32', pretrained='laion2b_e16').eval().requires_grad_(False).to(device))
     if ViTB32_laion400m_e31: clip_models.append(open_clip.create_model('ViT-B-32', pretrained='laion400m_e31').eval().requires_grad_(False).to(device))
     if ViTB32_laion400m_32: clip_models.append(open_clip.create_model('ViT-B-32', pretrained='laion400m_e32').eval().requires_grad_(False).to(device))
@@ -1535,12 +1536,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
         from raftutils.utils import InputPadder
         from raft import RAFT
-        from raftutils import flow_viz
-        import numpy as np
-        import argparse, PIL, cv2
-        from PIL import Image
-        from glob import glob
-        import torch
+        import argparse
 
         args2 = argparse.Namespace()
         args2.small = False
@@ -1642,7 +1638,7 @@ def main(cli_overrides: dict | None = None) -> None:
             else:
                 blended_w = frame2pil*(1-blend) + frame1_warped21*(blend)
 
-            return  PIL.Image.fromarray(blended_w.astype('uint8'))
+            return  Image.fromarray(blended_w.astype('uint8'))
 
         in_path = videoFramesFolder
         flo_folder = f'{in_path}/out_flo_fwd'
@@ -2022,8 +2018,6 @@ def main(cli_overrides: dict | None = None) -> None:
 
 
 
-    import PIL
-
     from .image.ffmpeg_utils import encode_numbered_png_sequence_h264
 
     # Create video
@@ -2065,8 +2059,8 @@ def main(cli_overrides: dict | None = None) -> None:
             frame1_path = frames_in[i-1]
             frame2_path = frames_in[i]
 
-            frame1 = PIL.Image.open(frame1_path)
-            frame2 = PIL.Image.open(frame2_path)
+            frame1 = Image.open(frame1_path)
+            frame2 = Image.open(frame2_path)
             frame1_stem = f"{(int(frame1_path.split('/')[-1].split('_')[-1][:-4])+1):04}.jpg"
             flo_path = f"/{flo_folder}/{frame1_stem}.npy"
             weights_path = None
@@ -2087,10 +2081,10 @@ def main(cli_overrides: dict | None = None) -> None:
             frame1_path = frames_in[i-1]
             frame2_path = frames_in[i]
 
-            frame1 = PIL.Image.open(frame1_path)
-            frame2 = PIL.Image.open(frame2_path)
+            frame1 = Image.open(frame1_path)
+            frame2 = Image.open(frame2_path)
 
-            frame = PIL.Image.fromarray((np.array(frame1)*(1-blend) + np.array(frame2)*(blend)).astype('uint8')).save(batchFolder+f"/blend/{folder}({run})_{i:04}.png")
+            frame = Image.fromarray((np.array(frame1)*(1-blend) + np.array(frame2)*(blend)).astype('uint8')).save(batchFolder+f"/blend/{folder}({run})_{i:04}.png")
 
 
     encode_numbered_png_sequence_h264(

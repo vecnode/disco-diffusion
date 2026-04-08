@@ -22,7 +22,7 @@ uv run python -m discodiff.main
 ```sh
 # 1) Baseline — square 512×512, prompt via stdin JSON
 uv run disco.py --width 512 --height 512 --text-prompts-json /dev/stdin <<'EOF'
-{"0": ["trees and a beautiful field of the mountain"]}
+{"0": ["cinematic coastal lighthouse, dusk fog"]}
 EOF
 ```
 
@@ -30,7 +30,7 @@ EOF
 # 2) Same resolution and prompt, fixed seed for reproducibility
 uv run disco.py --width 1024 --height 576 --set-seed 42 --steps 250 \
   --text-prompts-json /dev/stdin <<'EOF'
-{"0": ["trees and a beautiful field of the mountain"]}
+{"0": ["cinematic coastal lighthouse, dusk fog"]}
 EOF
 ```
 
