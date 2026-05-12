@@ -120,7 +120,7 @@ def main(cli_overrides: dict | None = None) -> None:
     sampling_mode = 'bicubic'
 
     turbo_mode = True
-    turbo_steps = "10" # ["2","3","4","5","6","10"]
+    turbo_steps = "6" # ["2","3","4","5","6","10"]
     turbo_preroll = 0 # frames
 
     frames_scale = 1500
@@ -426,7 +426,8 @@ def main(cli_overrides: dict | None = None) -> None:
       next_step_pil = dxf.transform_image_3d(img_filepath, midas_model, midas_transform, DEVICE,
                                               rot_mat, translate_xyz, args.near_plane, args.far_plane,
                                               args.fov, padding_mode=args.padding_mode,
-                                              sampling_mode=args.sampling_mode, midas_weight=args.midas_weight)
+                                              sampling_mode=args.sampling_mode, midas_weight=args.midas_weight,
+                                              debug_dir=debug3dFolder, frame_num=frame_num)
       return next_step_pil
 
     def symmetry_transformation_fn(x):
@@ -449,6 +450,12 @@ def main(cli_overrides: dict | None = None) -> None:
 
       if (args.animation_mode == "3D") and (args.midas_weight > 0.0):
           midas_model, midas_transform, midas_net_w, midas_net_h, midas_resize_mode, midas_normalization = init_midas_depth_model(args.midas_depth_model)
+      if args.animation_mode == "3D" and turbo_mode:
+          print(
+              f"[turbo] steps={args.steps} turbo_steps={int(turbo_steps)} "
+              f"frames_skip_steps={frames_skip_steps} calc_skip_steps={args.calc_frames_skip_steps} "
+              f"effective_diffusion_steps={args.steps - args.calc_frames_skip_steps}"
+          )
       for frame_num in range(args.start_frame, args.max_frames):
           if stop_on_next_loop:
             break
@@ -831,14 +838,15 @@ def main(cli_overrides: dict | None = None) -> None:
                               image.save(prev_frame_path)
                             image.save(f'{batchFolder}/{filename}')
                             if args.animation_mode == "3D":
-                              # If turbo, save a blended image
+                              # If turbo, save and continue from the same blended frame the user actually sees.
                               if turbo_mode and frame_num > 0:
                                 # Favor the newly diffused frame to avoid cumulative blur/smear.
                                 blend_factor = 1.0 - (1.0 / int(turbo_steps))
                                 newFrame = cv2.imread(prev_frame_path) # This is already updated..
                                 prev_frame_warped = cv2.imread(prev_frame_scaled_path)
                                 blendedImage = cv2.addWeighted(newFrame, blend_factor, prev_frame_warped, (1-blend_factor), 0.0)
-                                cv2.imwrite(f'{batchFolder}/{filename}',blendedImage)
+                                cv2.imwrite(f'{batchFolder}/{filename}', blendedImage)
+                                cv2.imwrite(prev_frame_path, blendedImage)
                               else:
                                 image.save(f'{batchFolder}/{filename}')
 
@@ -1272,6 +1280,8 @@ def main(cli_overrides: dict | None = None) -> None:
 
     runtimeFolder = f"{batchFolder}/runtime"
     createPath(runtimeFolder)
+    debug3dFolder = f"{batchFolder}/3d"
+    createPath(debug3dFolder)
     progress_path = f"{runtimeFolder}/progress.png"
     prev_frame_path = f"{runtimeFolder}/prevFrame.png"
     prev_frame_scaled_path = f"{runtimeFolder}/prevFrameScaled.png"
@@ -2130,6 +2140,26 @@ def main(cli_overrides: dict | None = None) -> None:
         start_number=init_frame,
         frames_v=last_frame + 1,
     )
+
+    # Create per-channel 3D debug videos if the 3d folder exists and has frames
+    if GENERATION_MODE == "3D" and os.path.isdir(debug3dFolder):
+        _3d_channels = ["warped", "source", "depth_blended", "depth_midas", "depth_adabins", "flow_field"]
+        for ch in _3d_channels:
+            pattern = os.path.join(debug3dFolder, f"frame_%04d_{ch}.png")
+            # Count matching frames to see if this channel was produced
+            n_ch = len(glob(os.path.join(debug3dFolder, f"frame_*_{ch}.png")))
+            if n_ch == 0:
+                continue
+            out_mp4 = os.path.join(debug3dFolder, f"{folder}({run})_3d_{ch}.mp4")
+            encode_numbered_png_sequence_h264(
+                cwd=debug3dFolder,
+                image_sequence_pattern=pattern,
+                output_path=out_mp4,
+                fps=fps,
+                start_number=0,
+                frames_v=n_ch,
+            )
+            print(f"[3D] {ch} video → {out_mp4}")
 
 
 if __name__ == "__main__":

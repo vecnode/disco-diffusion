@@ -5,6 +5,39 @@ from . import py3d_tools as p3d
 from PIL import Image
 import numpy as np
 import math
+import cv2
+
+
+def _save_3d_debug(debug_dir: str, frame_num: int, name: str, data) -> None:
+    """Save a debug image (numpy array or PIL Image) to debug_dir/frame_NNNN_<name>.png."""
+    if debug_dir is None:
+        return
+    os.makedirs(debug_dir, exist_ok=True)
+    path = os.path.join(debug_dir, f"frame_{frame_num:04d}_{name}.png")
+    if isinstance(data, Image.Image):
+        data.save(path)
+        return
+    arr = np.array(data, dtype=np.float32)
+    # Normalize to [0, 255]
+    lo, hi = arr.min(), arr.max()
+    if hi > lo:
+        arr = (arr - lo) / (hi - lo)
+    else:
+        arr = np.zeros_like(arr)
+    arr = (arr * 255).clip(0, 255).astype(np.uint8)
+    if arr.ndim == 2:
+        cv2.imwrite(path, arr)
+    else:
+        # Assume HxWx2 flow field — save as HSV colour wheel visualization
+        h, w = arr.shape[:2]
+        flow = np.array(data, dtype=np.float32)
+        mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+        hsv = np.zeros((h, w, 3), dtype=np.uint8)
+        hsv[..., 0] = (ang * 180 / np.pi / 2).astype(np.uint8)
+        hsv[..., 1] = 255
+        mag_norm = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+        hsv[..., 2] = mag_norm.astype(np.uint8)
+        cv2.imwrite(path, cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR))
 
 # Set from application entry: USE_ADABINS → MAIN_USE_ADABINS ('1' / '0'). Default '1' for standalone use.
 _MAIN_WANTS_ADABINS = os.environ.get('MAIN_USE_ADABINS', '1') != '0'
@@ -23,7 +56,7 @@ MIN_ADABINS_AREA = 448*448
 _ADABINS_CACHE = {}
 
 @torch.no_grad()
-def transform_image_3d(img_filepath, midas_model, midas_transform, device, rot_mat=torch.eye(3).unsqueeze(0), translate=(0.,0.,-0.04), near=2000, far=20000, fov_deg=60, padding_mode='border', sampling_mode='bicubic', midas_weight = 0.3,spherical=False):
+def transform_image_3d(img_filepath, midas_model, midas_transform, device, rot_mat=torch.eye(3).unsqueeze(0), translate=(0.,0.,-0.04), near=2000, far=20000, fov_deg=60, padding_mode='border', sampling_mode='bicubic', midas_weight=0.3, spherical=False, debug_dir=None, frame_num=0):
     import midas_utils
     img_pil = Image.open(open(img_filepath, 'rb')).convert('RGB')
     w, h = img_pil.size
@@ -96,11 +129,14 @@ def transform_image_3d(img_filepath, midas_model, midas_transform, device, rot_m
     prediction_np = np.subtract(50.0, prediction_np)
     prediction_np = prediction_np / 19.0
 
+    _save_3d_debug(debug_dir, frame_num, 'depth_midas', prediction_np)
     if want_adabins_blend and adabins_depth_np is not None:
         adabins_weight = 1.0 - midas_weight
         depth_map = prediction_np * midas_weight + adabins_depth_np * adabins_weight
+        _save_3d_debug(debug_dir, frame_num, 'depth_adabins', adabins_depth_np)
     else:
         depth_map = prediction_np
+    _save_3d_debug(debug_dir, frame_num, 'depth_blended', depth_map)
 
     depth_map = np.expand_dims(depth_map, axis=0)
     depth_tensor = torch.from_numpy(depth_map).squeeze().to(device)
@@ -120,6 +156,7 @@ def transform_image_3d(img_filepath, midas_model, midas_transform, device, rot_m
     xyz_new_cam_xy = persp_cam_new.get_full_projection_transform().transform_points(xyz_old_world)[:,0:2]
 
     offset_xy = xyz_new_cam_xy - xyz_old_cam_xy
+    _save_3d_debug(debug_dir, frame_num, 'flow_field', offset_xy.reshape(h, w, 2).cpu().numpy())
     # affine_grid theta param expects a batch of 2D mats. Each is 2x3 to do rotation+translation.
     identity_2d_batch = torch.tensor([[1.,0.,0.],[0.,1.,0.]], device=device).unsqueeze(0)
     # coords_2d will have shape (N,H,W,2).. which is also what grid_sample needs.
@@ -134,6 +171,8 @@ def transform_image_3d(img_filepath, midas_model, midas_transform, device, rot_m
         new_image = torch.nn.functional.grid_sample(image_tensor.add(1/512 - 0.0001).unsqueeze(0), offset_coords_2d, mode=sampling_mode, padding_mode=padding_mode, align_corners=False)
 
     img_pil = torchvision.transforms.ToPILImage()(new_image.squeeze().clamp(0,1.))
+    _save_3d_debug(debug_dir, frame_num, 'warped', img_pil)
+    _save_3d_debug(debug_dir, frame_num, 'source', Image.open(open(img_filepath, 'rb')).convert('RGB'))
 
     torch.cuda.empty_cache()
 
