@@ -52,11 +52,23 @@ EOF
 #### Text-to-video (3D)
 
 ```sh
-# Short v5.2-style 3D run with turbo, 16:9 output, and gentle forward camera motion
-uv run disco.py --generation-mode 3D --turbo-mode --width 1024 --height 576 --max-frames 120 --set-seed 42 --steps 100 \
-  --text-prompts-json /dev/stdin <<'EOF'
-{"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"], "50": ["trees, volumetric light, wide angle"], }
+
+uv run disco.py --generation-mode 3D --turbo-mode --width 1024 --height 576 \
+  --max-frames 120 --set-seed 42 --steps 100 \
+  --text-prompts-json /dev/stdin \
+  --image-prompts-json '{"0": [], "40": ["input/img1.jpeg:5"]}' \
+  <<'EOF'
+{"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"], "40": ["trees, volumetric light, wide angle"]}
 EOF
+
+
+uv run disco.py --generation-mode 3D --turbo-mode --width 1024 --height 576 \
+  --max-frames 120 --set-seed 42 --steps 100 \
+  --text-prompts-json /dev/stdin \
+  <<'EOF'
+{"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"], "40": ["the sea, volumetric light, wide angle"]}
+EOF
+
 ```
 
 ## Platform

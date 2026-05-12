@@ -19,6 +19,9 @@ except ImportError:
 MAX_ADABINS_AREA = 500000
 MIN_ADABINS_AREA = 448*448
 
+# Cache for InferenceHelper per device (load once)
+_ADABINS_CACHE = {}
+
 @torch.no_grad()
 def transform_image_3d(img_filepath, midas_model, midas_transform, device, rot_mat=torch.eye(3).unsqueeze(0), translate=(0.,0.,-0.04), near=2000, far=20000, fov_deg=60, padding_mode='border', sampling_mode='bicubic', midas_weight = 0.3,spherical=False):
     import midas_utils
@@ -31,13 +34,16 @@ def transform_image_3d(img_filepath, midas_model, midas_transform, device, rot_m
 
     if want_adabins_blend and not _INFERENCE_HELPER_AVAILABLE:
         print(
-            "AdaBins (InferenceHelper) not importable; using MiDaS depth only. "
-            "Add AdaBins to PYTHONPATH and weights under pretrained/, or set USE_ADABINS = False in src/discodiff/main.py."
+            "[WARN] AdaBins (InferenceHelper) not importable; using MiDaS depth only. "
+            "Add AdaBins to PYTHONPATH and weights under models/, or set USE_ADABINS = False in src/discodiff/main.py."
         )
     elif want_adabins_blend:
-        # AdaBins — predictions using nyu dataset
-        print("Running AdaBins depth estimation implementation...")
-        infer_helper = InferenceHelper(dataset='nyu', device=device)
+        # AdaBins — predictions using nyu dataset (cached per device)
+        device_str = str(device)
+        if device_str not in _ADABINS_CACHE:
+            print(f"[AdaBins] Loading model for {device_str}...")
+            _ADABINS_CACHE[device_str] = InferenceHelper(dataset='nyu', device=device)
+        infer_helper = _ADABINS_CACHE[device_str]
 
         image_pil_area = w * h
         if image_pil_area > MAX_ADABINS_AREA:
@@ -59,7 +65,8 @@ def transform_image_3d(img_filepath, midas_model, midas_transform, device, rot_m
             else:
                 adabins_depth = torch.from_numpy(adabins_depth).squeeze().to(device)
             adabins_depth_np = adabins_depth.cpu().numpy()
-        except Exception:
+        except Exception as e:
+            print(f"[AdaBins] ERROR: {e} — falling back to MiDaS only")
             adabins_depth_np = None
 
     torch.cuda.empty_cache()
@@ -70,7 +77,6 @@ def transform_image_3d(img_filepath, midas_model, midas_transform, device, rot_m
     midas_optimize = True
 
     # MiDaS depth estimation implementation
-    print("Running MiDaS depth estimation implementation")
     sample = torch.from_numpy(img_midas_input).float().to(device).unsqueeze(0)
     if midas_optimize==True and device == torch.device("cuda"):
         sample = sample.to(memory_format=torch.channels_last)  
@@ -84,7 +90,6 @@ def transform_image_3d(img_filepath, midas_model, midas_transform, device, rot_m
         ).squeeze()
     prediction_np = prediction_torch.clone().cpu().numpy()
 
-    print("Finished depth estimation.")
     torch.cuda.empty_cache()
 
     # MiDaS makes the near values greater, and the far values lesser. Let's reverse that and try to align with AdaBins a bit better.

@@ -12,7 +12,10 @@ guided-diffusion/
 AdaBins/
 open_clip/
 
-models/
+models/*pt
+models/*pth
+models/*ckpt
+
 pretrained/
 output/
 input/

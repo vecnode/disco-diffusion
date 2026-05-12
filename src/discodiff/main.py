@@ -44,7 +44,8 @@ def main(cli_overrides: dict | None = None) -> None:
         )
 
     # System-impacting runtime configuration (consolidated)
-    USE_ADABINS = False
+    USE_ADABINS = True
+
     USE_SECONDARY_DIFFUSION_MODEL = True
 
     diffusion_model = "512x512_diffusion_uncond_finetune_008100"
@@ -68,7 +69,7 @@ def main(cli_overrides: dict | None = None) -> None:
     width_height_for_512x512_models = [512, 256] # [1280, 768]
     width_height_for_256x256_models = [512, 448]
 
-    clip_guidance_scale = 500
+    clip_guidance_scale = 750
     tv_scale = 150
     range_scale = 150
     sat_scale = 0
@@ -118,12 +119,13 @@ def main(cli_overrides: dict | None = None) -> None:
     padding_mode = 'border'
     sampling_mode = 'bicubic'
 
-    turbo_mode = False
-    turbo_steps = "6" # ["2","3","4","5","6"]
-    turbo_preroll = 2 # frames
+    turbo_mode = True
+    turbo_steps = "10" # ["2","3","4","5","6","10"]
+    turbo_preroll = 0 # frames
 
     frames_scale = 1500
-    frames_skip_steps = '60%'
+    frames_skip_steps = '80%'
+
     video_init_frames_scale = 15000
     video_init_frames_skip_steps = '70%'
 
@@ -229,9 +231,9 @@ def main(cli_overrides: dict | None = None) -> None:
         except:
             if not os.path.exists("AdaBins"):
                 gitclone("https://github.com/shariqfarooq123/AdaBins.git")
-            _adabins_pt = f'{PROJECT_DIR}/pretrained/AdaBins_nyu.pt'
+            _adabins_pt = f'{PROJECT_DIR}/models/AdaBins_nyu.pt'
             if not os.path.exists(_adabins_pt):
-                createPath(f'{PROJECT_DIR}/pretrained')
+                createPath(f'{PROJECT_DIR}/models')
                 print(f"Downloading AdaBins_nyu.pt from Hugging Face")
                 _r = subprocess.run(
                     ['wget', '-O', _adabins_pt, _ADABINS_NYU_URL],
@@ -415,22 +417,12 @@ def main(cli_overrides: dict | None = None) -> None:
         rotation_3d_x = args.rotation_3d_x_series[frame_num]
         rotation_3d_y = args.rotation_3d_y_series[frame_num]
         rotation_3d_z = args.rotation_3d_z_series[frame_num]
-        print(
-            f'translation_x: {translation_x}',
-            f'translation_y: {translation_y}',
-            f'translation_z: {translation_z}',
-            f'rotation_3d_x: {rotation_3d_x}',
-            f'rotation_3d_y: {rotation_3d_y}',
-            f'rotation_3d_z: {rotation_3d_z}',
-        )
+        # Silently read keyframe values
 
       translate_xyz = [-translation_x*TRANSLATION_SCALE, translation_y*TRANSLATION_SCALE, -translation_z*TRANSLATION_SCALE]
       rotate_xyz_degrees = [rotation_3d_x, rotation_3d_y, rotation_3d_z]
-      print('translation:',translate_xyz)
-      print('rotation:',rotate_xyz_degrees)
       rotate_xyz = [math.radians(rotate_xyz_degrees[0]), math.radians(rotate_xyz_degrees[1]), math.radians(rotate_xyz_degrees[2])]
       rot_mat = p3dT.euler_angles_to_matrix(torch.tensor(rotate_xyz, device=device), "XYZ").unsqueeze(0)
-      print("rot_mat: " + str(rot_mat))
       next_step_pil = dxf.transform_image_3d(img_filepath, midas_model, midas_transform, DEVICE,
                                               rot_mat, translate_xyz, args.near_plane, args.far_plane,
                                               args.fov, padding_mode=args.padding_mode,
@@ -535,6 +527,9 @@ def main(cli_overrides: dict | None = None) -> None:
                 if frame_num == turbo_preroll: #start tracking oldframe
                   next_step_pil.save(old_frame_scaled_path)#stash for later blending          
                 elif frame_num > turbo_preroll:
+                  if not os.path.exists(old_frame_scaled_path):
+                    # Bootstrap turbo old-frame state if missing (fresh run / resumed run without cache).
+                    next_step_pil.save(old_frame_scaled_path)
                   #set up 2 warped image sequences, old & new, to blend toward new diff image
                   old_frame = do_3d_step(old_frame_scaled_path, frame_num, midas_model, midas_transform)
                   old_frame.save(old_frame_scaled_path)
@@ -612,7 +607,6 @@ def main(cli_overrides: dict | None = None) -> None:
           else:
             frame_prompt = []
 
-          print(args.image_prompts_series)
           if args.image_prompts_series is not None and frame_num >= len(args.image_prompts_series):
             image_prompt = args.image_prompts_series[-1]
           elif args.image_prompts_series is not None:
@@ -620,7 +614,13 @@ def main(cli_overrides: dict | None = None) -> None:
           else:
             image_prompt = []
 
-          print(f'Frame {frame_num} Prompt: {frame_prompt}')
+          # Only print at keyframes with new prompts
+          if frame_num == 0 or (args.prompts_series is not None and frame_num < len(args.prompts_series) and args.prompts_series[frame_num] != args.prompts_series[frame_num - 1]):
+            if frame_prompt:
+              print(f'Frame {frame_num} Text Prompt: {frame_prompt}')
+          if frame_num == 0 or (args.image_prompts_series is not None and frame_num < len(args.image_prompts_series) and args.image_prompts_series[frame_num] != args.image_prompts_series[frame_num - 1]):
+            if image_prompt:
+              print(f'Frame {frame_num} Image Prompt: {image_prompt}')
 
           model_stats = []
           for clip_model in clip_models:
@@ -833,8 +833,8 @@ def main(cli_overrides: dict | None = None) -> None:
                             if args.animation_mode == "3D":
                               # If turbo, save a blended image
                               if turbo_mode and frame_num > 0:
-                                # Mix new image with prevFrameScaled
-                                blend_factor = (1)/int(turbo_steps)
+                                # Favor the newly diffused frame to avoid cumulative blur/smear.
+                                blend_factor = 1.0 - (1.0 / int(turbo_steps))
                                 newFrame = cv2.imread(prev_frame_path) # This is already updated..
                                 prev_frame_warped = cv2.imread(prev_frame_scaled_path)
                                 blendedImage = cv2.addWeighted(newFrame, blend_factor, prev_frame_warped, (1-blend_factor), 0.0)
@@ -1290,7 +1290,7 @@ def main(cli_overrides: dict | None = None) -> None:
             zoom = "0: (1)"
             translation_z = "0: (1.5)"
             frames_scale = 2000
-            frames_skip_steps = '70%'
+            frames_skip_steps = '80%'
 
         if not ov:
             return

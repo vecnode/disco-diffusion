@@ -20,10 +20,15 @@ def _int_key_mapping(raw: dict) -> dict:
 
 
 def _optional_json_dict(path: str) -> dict:
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
+    """Accept either an inline JSON string or a path to a JSON file."""
+    stripped = path.strip()
+    if stripped.startswith("{"):
+        data = json.loads(stripped)
+    else:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
     if not isinstance(data, dict):
-        raise ValueError(f"Expected JSON object in {path}")
+        raise ValueError(f"Expected JSON object, got: {type(data)}")
     return _int_key_mapping(data)
 
 
