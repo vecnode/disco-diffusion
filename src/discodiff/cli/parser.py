@@ -139,6 +139,19 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         metavar="MODE",
         help='Pipeline mode (same as GENERATION_MODE in main.py). Overrides DISCO_GENERATION_MODE.',
     )
+    p.add_argument("--max-frames", type=_positive_int, dest="max_frames", metavar="N")
+    p.add_argument("--translation-x", type=str, dest="translation_x", metavar="KEYFRAMES")
+    p.add_argument("--translation-y", type=str, dest="translation_y", metavar="KEYFRAMES")
+    p.add_argument("--translation-z", type=str, dest="translation_z", metavar="KEYFRAMES")
+    p.add_argument("--rotation-3d-x", type=str, dest="rotation_3d_x", metavar="KEYFRAMES")
+    p.add_argument("--rotation-3d-y", type=str, dest="rotation_3d_y", metavar="KEYFRAMES")
+    p.add_argument("--rotation-3d-z", type=str, dest="rotation_3d_z", metavar="KEYFRAMES")
+    p.add_argument("--midas-weight", type=float, dest="midas_weight")
+    p.add_argument("--fov", type=float, dest="fov")
+    p.add_argument("--turbo-mode", action=argparse.BooleanOptionalAction, dest="turbo_mode")
+    p.add_argument("--turbo-steps", type=str, dest="turbo_steps", metavar="N")
+    p.add_argument("--frames-scale", type=int, dest="frames_scale")
+    p.add_argument("--frames-skip-steps", type=str, dest="frames_skip_steps", metavar="PERCENT")
     p.add_argument(
         "--device",
         type=str,
@@ -170,6 +183,19 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         "perlin_mode",
         "rand_mag",
         "eta",
+        "max_frames",
+        "translation_x",
+        "translation_y",
+        "translation_z",
+        "rotation_3d_x",
+        "rotation_3d_y",
+        "rotation_3d_z",
+        "midas_weight",
+        "fov",
+        "turbo_mode",
+        "turbo_steps",
+        "frames_scale",
+        "frames_skip_steps",
         "video_init_flow_blend",
         "perlin_init",
         "skip_augs",

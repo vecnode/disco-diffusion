@@ -63,30 +63,16 @@ def main(cli_overrides: dict | None = None) -> None:
     RN50x16 = False
     RN50x64 = False
 
-    ViTB32_laion2b_e16 = False
-    ViTB32_laion400m_e31 = False
-    ViTB32_laion400m_32 = False
-    ViTB32quickgelu_laion400m_e31 = False
-    ViTB32quickgelu_laion400m_e32 = False
-    ViTB16_laion400m_e31 = False
-    ViTB16_laion400m_e32 = False
-    RN50_yffcc15m = False
-    RN50_cc12m = False
-    RN50_quickgelu_yfcc15m = False
-    RN50_quickgelu_cc12m = False
-    RN101_yfcc15m = False
-    RN101_quickgelu_yfcc15m = False
-
     batch_name = 'example'
-    steps = 150 # [25,50,100,150,250,500,1000]
+    steps = 100 # [25,50,100,150,250,500,1000]
     width_height_for_512x512_models = [512, 256] # [1280, 768]
     width_height_for_256x256_models = [512, 448]
 
-    clip_guidance_scale = 1000
+    clip_guidance_scale = 500
     tv_scale = 150
     range_scale = 150
     sat_scale = 0
-    cutn_batches = 2
+    cutn_batches = 4
     cutn = 16
     skip_augs = False
 
@@ -127,14 +113,14 @@ def main(cli_overrides: dict | None = None) -> None:
     midas_depth_model = "dpt_large"
     midas_weight = 0.3
     near_plane = 200
-    far_plane = 10000
-    fov = 40
+    far_plane = 1000
+    fov = 60
     padding_mode = 'border'
     sampling_mode = 'bicubic'
 
     turbo_mode = False
-    turbo_steps = "3" # ["2","3","4","5","6"]
-    turbo_preroll = 10 # frames
+    turbo_steps = "6" # ["2","3","4","5","6"]
+    turbo_preroll = 2 # frames
 
     frames_scale = 1500
     frames_skip_steps = '60%'
@@ -185,14 +171,6 @@ def main(cli_overrides: dict | None = None) -> None:
             gitclone("https://github.com/openai/CLIP")
         sys.path.append(f'{PROJECT_DIR}/CLIP')
         from CLIP import clip
-
-    try:
-        import open_clip
-    except:
-        if not os.path.exists("open_clip/src"):
-            gitclone("https://github.com/mlfoundations/open_clip.git")
-        sys.path.append(f'{PROJECT_DIR}/open_clip/src')
-        import open_clip
 
     # guided-diffusion is vendored into discodiff as an internal module.
     from .guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
@@ -913,19 +891,6 @@ def main(cli_overrides: dict | None = None) -> None:
           'RN50x4': RN50x4,
           'RN50x16': RN50x16,
           'RN50x64': RN50x64,
-          'ViTB32_laion2b_e16': ViTB32_laion2b_e16,
-          'ViTB32_laion400m_e31': ViTB32_laion400m_e31,
-          'ViTB32_laion400m_32': ViTB32_laion400m_32,
-          'ViTB32quickgelu_laion400m_e31': ViTB32quickgelu_laion400m_e31,
-          'ViTB32quickgelu_laion400m_e32': ViTB32quickgelu_laion400m_e32,
-          'ViTB16_laion400m_e31': ViTB16_laion400m_e31,
-          'ViTB16_laion400m_e32': ViTB16_laion400m_e32,
-          'RN50_yffcc15m': RN50_yffcc15m,
-          'RN50_cc12m': RN50_cc12m,
-          'RN50_quickgelu_yfcc15m': RN50_quickgelu_yfcc15m,
-          'RN50_quickgelu_cc12m': RN50_quickgelu_cc12m,
-          'RN101_yfcc15m': RN101_yfcc15m,
-          'RN101_quickgelu_yfcc15m': RN101_quickgelu_yfcc15m,
           'cut_overview': str(cut_overview),
           'cut_innercut': str(cut_innercut),
           'cut_ic_pow': str(cut_ic_pow),
@@ -1266,20 +1231,6 @@ def main(cli_overrides: dict | None = None) -> None:
     if RN50x16: clip_models.append(clip.load('RN50x16', jit=False)[0].eval().requires_grad_(False).to(device))
     if RN50x64: clip_models.append(clip.load('RN50x64', jit=False)[0].eval().requires_grad_(False).to(device))
     if RN101: clip_models.append(clip.load('RN101', jit=False)[0].eval().requires_grad_(False).to(device))
-    
-    if ViTB32_laion2b_e16: clip_models.append(open_clip.create_model('ViT-B-32', pretrained='laion2b_e16').eval().requires_grad_(False).to(device))
-    if ViTB32_laion400m_e31: clip_models.append(open_clip.create_model('ViT-B-32', pretrained='laion400m_e31').eval().requires_grad_(False).to(device))
-    if ViTB32_laion400m_32: clip_models.append(open_clip.create_model('ViT-B-32', pretrained='laion400m_e32').eval().requires_grad_(False).to(device))
-    if ViTB32quickgelu_laion400m_e31: clip_models.append(open_clip.create_model('ViT-B-32-quickgelu', pretrained='laion400m_e31').eval().requires_grad_(False).to(device))
-    if ViTB32quickgelu_laion400m_e32: clip_models.append(open_clip.create_model('ViT-B-32-quickgelu', pretrained='laion400m_e32').eval().requires_grad_(False).to(device))
-    if ViTB16_laion400m_e31: clip_models.append(open_clip.create_model('ViT-B-16', pretrained='laion400m_e31').eval().requires_grad_(False).to(device))
-    if ViTB16_laion400m_e32: clip_models.append(open_clip.create_model('ViT-B-16', pretrained='laion400m_e32').eval().requires_grad_(False).to(device))
-    if RN50_yffcc15m: clip_models.append(open_clip.create_model('RN50', pretrained='yfcc15m').eval().requires_grad_(False).to(device))
-    if RN50_cc12m: clip_models.append(open_clip.create_model('RN50', pretrained='cc12m').eval().requires_grad_(False).to(device))
-    if RN50_quickgelu_yfcc15m: clip_models.append(open_clip.create_model('RN50-quickgelu', pretrained='yfcc15m').eval().requires_grad_(False).to(device))
-    if RN50_quickgelu_cc12m: clip_models.append(open_clip.create_model('RN50-quickgelu', pretrained='cc12m').eval().requires_grad_(False).to(device))
-    if RN101_yfcc15m: clip_models.append(open_clip.create_model('RN101', pretrained='yfcc15m').eval().requires_grad_(False).to(device))
-    if RN101_quickgelu_yfcc15m: clip_models.append(open_clip.create_model('RN101-quickgelu', pretrained='yfcc15m').eval().requires_grad_(False).to(device))
 
     normalize = T.Normalize(mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
     lpips_model = lpips.LPIPS(net='vgg').to(device)
@@ -1325,6 +1276,61 @@ def main(cli_overrides: dict | None = None) -> None:
     prev_frame_path = f"{runtimeFolder}/prevFrame.png"
     prev_frame_scaled_path = f"{runtimeFolder}/prevFrameScaled.png"
     old_frame_scaled_path = f"{runtimeFolder}/oldFrameScaled.png"
+
+    def _apply_pre_animation_cli_overrides(ov: dict | None) -> None:
+        nonlocal GENERATION_MODE, max_frames, width_height, side_x, side_y
+        nonlocal translation_x, translation_y, translation_z
+        nonlocal rotation_3d_x, rotation_3d_y, rotation_3d_z, midas_weight, fov
+        nonlocal zoom, frames_scale, frames_skip_steps, turbo_mode, turbo_steps
+
+        if ov and "GENERATION_MODE" in ov:
+            GENERATION_MODE = ov["GENERATION_MODE"]
+
+        if GENERATION_MODE == "3D":
+            zoom = "0: (1)"
+            translation_z = "0: (1.5)"
+            frames_scale = 2000
+            frames_skip_steps = '70%'
+
+        if not ov:
+            return
+
+        if "max_frames" in ov:
+            max_frames = ov["max_frames"]
+        if "translation_x" in ov:
+            translation_x = ov["translation_x"]
+        if "translation_y" in ov:
+            translation_y = ov["translation_y"]
+        if "translation_z" in ov:
+            translation_z = ov["translation_z"]
+        if "rotation_3d_x" in ov:
+            rotation_3d_x = ov["rotation_3d_x"]
+        if "rotation_3d_y" in ov:
+            rotation_3d_y = ov["rotation_3d_y"]
+        if "rotation_3d_z" in ov:
+            rotation_3d_z = ov["rotation_3d_z"]
+        if "midas_weight" in ov:
+            midas_weight = ov["midas_weight"]
+        if "fov" in ov:
+            fov = ov["fov"]
+        if "turbo_mode" in ov:
+            turbo_mode = ov["turbo_mode"]
+        if "turbo_steps" in ov:
+            turbo_steps = ov["turbo_steps"]
+        if "frames_scale" in ov:
+            frames_scale = ov["frames_scale"]
+        if "frames_skip_steps" in ov:
+            frames_skip_steps = ov["frames_skip_steps"]
+        if "width_height" in ov:
+            width_height = [ov["width_height"][0], ov["width_height"][1]]
+            side_x = (width_height[0] // 64) * 64
+            side_y = (width_height[1] // 64) * 64
+            if side_x != width_height[0] or side_y != width_height[1]:
+                print(
+                    f"Changing output size to {side_x}x{side_y}. Dimensions must be multiples of 64."
+                )
+
+    _apply_pre_animation_cli_overrides(cli_overrides)
 
 
 
@@ -1810,7 +1816,10 @@ def main(cli_overrides: dict | None = None) -> None:
         nonlocal fuzzy_prompt, rand_mag, eta, use_vertical_symmetry, use_horizontal_symmetry
         nonlocal transformation_percent, video_init_flow_warp, video_init_flow_blend
         nonlocal video_init_check_consistency, text_prompts, image_prompts
-        nonlocal width_height, side_x, side_y, steps, GENERATION_MODE
+        nonlocal width_height, side_x, side_y, steps, GENERATION_MODE, max_frames
+        nonlocal translation_x, translation_y, translation_z
+        nonlocal rotation_3d_x, rotation_3d_y, rotation_3d_z, midas_weight, fov
+        nonlocal turbo_mode, turbo_steps, frames_scale, frames_skip_steps
         if not ov:
             return
         if "GENERATION_MODE" in ov:
@@ -1855,6 +1864,32 @@ def main(cli_overrides: dict | None = None) -> None:
             rand_mag = ov["rand_mag"]
         if "eta" in ov:
             eta = ov["eta"]
+        if "max_frames" in ov:
+            max_frames = ov["max_frames"]
+        if "translation_x" in ov:
+            translation_x = ov["translation_x"]
+        if "translation_y" in ov:
+            translation_y = ov["translation_y"]
+        if "translation_z" in ov:
+            translation_z = ov["translation_z"]
+        if "rotation_3d_x" in ov:
+            rotation_3d_x = ov["rotation_3d_x"]
+        if "rotation_3d_y" in ov:
+            rotation_3d_y = ov["rotation_3d_y"]
+        if "rotation_3d_z" in ov:
+            rotation_3d_z = ov["rotation_3d_z"]
+        if "midas_weight" in ov:
+            midas_weight = ov["midas_weight"]
+        if "fov" in ov:
+            fov = ov["fov"]
+        if "turbo_mode" in ov:
+            turbo_mode = ov["turbo_mode"]
+        if "turbo_steps" in ov:
+            turbo_steps = ov["turbo_steps"]
+        if "frames_scale" in ov:
+            frames_scale = ov["frames_scale"]
+        if "frames_skip_steps" in ov:
+            frames_skip_steps = ov["frames_skip_steps"]
         if "use_vertical_symmetry" in ov:
             use_vertical_symmetry = ov["use_vertical_symmetry"]
         if "use_horizontal_symmetry" in ov:

@@ -1,15 +1,12 @@
 # disco-diffusion
 
-A modern refactor of disco-diffusion (ongoing).
+Under heavy development. 
 
-Specific support for RTX Graphics Cards, tests under 24Gb.
+Specific support for RTX Ampere, tests under 24Gb.
 
 ## Reproduce
 
 ```sh
-# Install uv (Linux/macOS)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
 # Sync environment from lockfile and run
 uv sync
 uv run disco.py
@@ -55,18 +52,10 @@ EOF
 #### Text-to-video (3D)
 
 ```sh
-# Example A — short 3D smoke run (few steps; good for wiring/paths validation)
-uv run disco.py --generation-mode 3D --width 512 --height 512 --set-seed 42 --steps 50 \
+# Short v5.2-style 3D run with turbo, 16:9 output, and gentle forward camera motion
+uv run disco.py --generation-mode 3D --turbo-mode --width 1024 --height 576 --max-frames 120 --set-seed 42 --steps 100 \
   --text-prompts-json /dev/stdin <<'EOF'
-{"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"]}
-EOF
-```
-
-```sh
-# Example B — longer 3D run (more steps; keep the prompt stable while camera motion comes from keyframes in main.py)
-uv run disco.py --generation-mode 3D --width 1024 --height 576 --set-seed 42 --steps 250 \
-  --text-prompts-json /dev/stdin <<'EOF'
-{"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"]}
+{"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"], "50": ["trees, volumetric light, wide angle"], }
 EOF
 ```
 
@@ -78,17 +67,13 @@ EOF
 
 Device selection is centralized in `src/discodiff/platform/device.py`.
 
-OS / accelerator | Status | Notes
---- | --- | ---
 Linux + NVIDIA CUDA (RTX preferred) | Supported | `auto` prefers RTX-named CUDA devices, then falls back to first CUDA GPU.
-Windows + NVIDIA CUDA | Best effort | Works through the same device layer; Linux remains the tested target.
-macOS + MPS | Best effort | No RTX path on macOS; `auto` can select `mps` when available.
 CPU fallback | Supported | Used when no requested accelerator is available.
 
 Known caveats:
 - RTX detection is name-based (`RTX` in GPU name) and may treat non-RTX CUDA devices as generic CUDA.
 - Driver/toolkit mismatches can still fail at runtime even when device selection succeeds.
-- Non-Linux runs are intentionally warned unless `DISCO_ALLOW_NON_LINUX=1` is set.
+
 
 ### Device Selection
 
