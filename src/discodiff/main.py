@@ -112,7 +112,7 @@ def main(cli_overrides: dict | None = None) -> None:
     rotation_3d_y = "0: (0)"
     rotation_3d_z = "0: (0)"
     midas_depth_model = "dpt_large"
-    midas_weight = 0.3
+    midas_weight = 0.6
     near_plane = 200
     far_plane = 1000
     fov = 60
@@ -120,11 +120,11 @@ def main(cli_overrides: dict | None = None) -> None:
     sampling_mode = 'bicubic'
 
     turbo_mode = True
-    turbo_steps = "6" # ["2","3","4","5","6","10"]
-    turbo_preroll = 0 # frames
+    turbo_steps = "3" # ["2","3","4","5","6","10"]
+    turbo_preroll = 10 # frames
 
     frames_scale = 1500
-    frames_skip_steps = '80%'
+    frames_skip_steps = '60%'
 
     video_init_frames_scale = 15000
     video_init_frames_skip_steps = '70%'
@@ -838,17 +838,16 @@ def main(cli_overrides: dict | None = None) -> None:
                               image.save(prev_frame_path)
                             image.save(f'{batchFolder}/{filename}')
                             if args.animation_mode == "3D":
-                              # If turbo, save and continue from the same blended frame the user actually sees.
-                              if turbo_mode and frame_num > 0:
-                                # Favor the newly diffused frame to avoid cumulative blur/smear.
-                                blend_factor = 1.0 - (1.0 / int(turbo_steps))
-                                newFrame = cv2.imread(prev_frame_path) # This is already updated..
-                                prev_frame_warped = cv2.imread(prev_frame_scaled_path)
-                                blendedImage = cv2.addWeighted(newFrame, blend_factor, prev_frame_warped, (1-blend_factor), 0.0)
-                                cv2.imwrite(f'{batchFolder}/{filename}', blendedImage)
-                                cv2.imwrite(prev_frame_path, blendedImage)
-                              else:
-                                image.save(f'{batchFolder}/{filename}')
+                                # Match notebook behavior: blend only for the saved output frame,
+                                # but keep prev_frame_path as the newly diffused frame.
+                                if turbo_mode and frame_num > 0:
+                                    blend_factor = 1.0 / int(turbo_steps)
+                                    newFrame = cv2.imread(prev_frame_path) # This is already updated..
+                                    prev_frame_warped = cv2.imread(prev_frame_scaled_path)
+                                    blendedImage = cv2.addWeighted(newFrame, blend_factor, prev_frame_warped, (1-blend_factor), 0.0)
+                                    cv2.imwrite(f'{batchFolder}/{filename}', blendedImage)
+                                else:
+                                    image.save(f'{batchFolder}/{filename}')
 
 
 
@@ -1299,8 +1298,6 @@ def main(cli_overrides: dict | None = None) -> None:
         if GENERATION_MODE == "3D":
             zoom = "0: (1)"
             translation_z = "0: (1.5)"
-            frames_scale = 2000
-            frames_skip_steps = '80%'
 
         if not ov:
             return
@@ -1380,9 +1377,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
     # Insist that turbo be used only with 3D anim.
     if turbo_mode and GENERATION_MODE != '3D':
-        print('=====')
         print('Turbo mode only available with 3D animations. Disabling Turbo.')
-        print('=====')
         turbo_mode = False
 
     from .config.keyframes import get_inbetweens, parse_key_frames
@@ -1822,14 +1817,16 @@ def main(cli_overrides: dict | None = None) -> None:
     def _apply_cli_overrides(ov: dict | None) -> None:
         nonlocal clip_guidance_scale, tv_scale, range_scale, sat_scale, cutn, cutn_batches
         nonlocal init_image, init_scale, skip_steps, perlin_init, perlin_mode
-        nonlocal skip_augs, randomize_class, clip_denoised, clamp_grad, set_seed
+        nonlocal skip_augs, randomize_class, clip_denoised, clamp_grad, clamp_max, set_seed
         nonlocal fuzzy_prompt, rand_mag, eta, use_vertical_symmetry, use_horizontal_symmetry
         nonlocal transformation_percent, video_init_flow_warp, video_init_flow_blend
         nonlocal video_init_check_consistency, text_prompts, image_prompts
         nonlocal width_height, side_x, side_y, steps, GENERATION_MODE, max_frames
         nonlocal translation_x, translation_y, translation_z
-        nonlocal rotation_3d_x, rotation_3d_y, rotation_3d_z, midas_weight, fov
-        nonlocal turbo_mode, turbo_steps, frames_scale, frames_skip_steps
+        nonlocal rotation_3d_x, rotation_3d_y, rotation_3d_z, midas_weight, near_plane, far_plane, fov
+        nonlocal padding_mode, sampling_mode
+        nonlocal turbo_mode, turbo_steps, turbo_preroll, frames_scale, frames_skip_steps
+        nonlocal video_init_frames_scale, video_init_frames_skip_steps
         if not ov:
             return
         if "GENERATION_MODE" in ov:
@@ -1866,6 +1863,8 @@ def main(cli_overrides: dict | None = None) -> None:
             clip_denoised = ov["clip_denoised"]
         if "clamp_grad" in ov:
             clamp_grad = ov["clamp_grad"]
+        if "clamp_max" in ov:
+            clamp_max = ov["clamp_max"]
         if "set_seed" in ov:
             set_seed = ov["set_seed"]
         if "fuzzy_prompt" in ov:
@@ -1890,16 +1889,30 @@ def main(cli_overrides: dict | None = None) -> None:
             rotation_3d_z = ov["rotation_3d_z"]
         if "midas_weight" in ov:
             midas_weight = ov["midas_weight"]
+        if "near_plane" in ov:
+            near_plane = ov["near_plane"]
+        if "far_plane" in ov:
+            far_plane = ov["far_plane"]
         if "fov" in ov:
             fov = ov["fov"]
+        if "padding_mode" in ov:
+            padding_mode = ov["padding_mode"]
+        if "sampling_mode" in ov:
+            sampling_mode = ov["sampling_mode"]
         if "turbo_mode" in ov:
             turbo_mode = ov["turbo_mode"]
         if "turbo_steps" in ov:
             turbo_steps = ov["turbo_steps"]
+        if "turbo_preroll" in ov:
+            turbo_preroll = ov["turbo_preroll"]
         if "frames_scale" in ov:
             frames_scale = ov["frames_scale"]
         if "frames_skip_steps" in ov:
             frames_skip_steps = ov["frames_skip_steps"]
+        if "video_init_frames_scale" in ov:
+            video_init_frames_scale = ov["video_init_frames_scale"]
+        if "video_init_frames_skip_steps" in ov:
+            video_init_frames_skip_steps = ov["video_init_frames_skip_steps"]
         if "use_vertical_symmetry" in ov:
             use_vertical_symmetry = ov["use_vertical_symmetry"]
         if "use_horizontal_symmetry" in ov:
