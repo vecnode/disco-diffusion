@@ -17,7 +17,7 @@ def _save_3d_debug(debug_dir: str, frame_num: int, name: str, data) -> None:
     if isinstance(data, Image.Image):
         data.save(path)
         return
-    arr = np.array(data, dtype=np.float32)
+    arr = np.nan_to_num(np.array(data, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
     # Normalize to [0, 255]
     lo, hi = arr.min(), arr.max()
     if hi > lo:
@@ -30,7 +30,7 @@ def _save_3d_debug(debug_dir: str, frame_num: int, name: str, data) -> None:
     else:
         # Assume HxWx2 flow field — save as HSV colour wheel visualization
         h, w = arr.shape[:2]
-        flow = np.array(data, dtype=np.float32)
+        flow = np.nan_to_num(np.array(data, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
         mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
         hsv = np.zeros((h, w, 3), dtype=np.uint8)
         hsv[..., 0] = (ang * 180 / np.pi / 2).astype(np.uint8)
@@ -39,107 +39,83 @@ def _save_3d_debug(debug_dir: str, frame_num: int, name: str, data) -> None:
         hsv[..., 2] = mag_norm.astype(np.uint8)
         cv2.imwrite(path, cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR))
 
-# Set from application entry: USE_ADABINS → MAIN_USE_ADABINS ('1' / '0'). Default '1' for standalone use.
-_MAIN_WANTS_ADABINS = os.environ.get('MAIN_USE_ADABINS', '1') != '0'
-
-try:
-    from infer import InferenceHelper
-    _INFERENCE_HELPER_AVAILABLE = True
-except ImportError:
-    InferenceHelper = None  # type: ignore
-    _INFERENCE_HELPER_AVAILABLE = False
-
 MAX_ADABINS_AREA = 500000
 MIN_ADABINS_AREA = 448*448
 
-# Cache for InferenceHelper per device (load once)
-_ADABINS_CACHE = {}
+_DEPTH_EMA_CACHE = {}
+
+
+def _robust_normalize_depth(depth_map: np.ndarray) -> np.ndarray:
+    depth_arr = np.nan_to_num(np.asarray(depth_map, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+    if not np.isfinite(depth_arr).any():
+        return np.zeros_like(depth_arr, dtype=np.float32)
+    lo, hi = np.percentile(depth_arr, [2.0, 98.0])
+    if not np.isfinite(lo) or not np.isfinite(hi) or hi - lo < 1e-6:
+        return np.zeros_like(depth_arr, dtype=np.float32)
+    depth_arr = np.clip(depth_arr, lo, hi)
+    return (depth_arr - lo) / (hi - lo)
+
+
+def _smooth_depth_temporally(depth_map: np.ndarray, frame_num: int, cache_key: str) -> np.ndarray:
+    depth_arr = np.asarray(depth_map, dtype=np.float32)
+    state = _DEPTH_EMA_CACHE.get(cache_key)
+    if frame_num <= 0 or state is None or state.get("value") is None or state.get("frame") is None:
+        _DEPTH_EMA_CACHE[cache_key] = {"frame": frame_num, "value": depth_arr.copy()}
+        return depth_arr
+
+    previous_frame = int(state["frame"])
+    previous_depth = np.asarray(state["value"], dtype=np.float32)
+    if previous_frame != frame_num - 1 or previous_depth.shape != depth_arr.shape:
+        _DEPTH_EMA_CACHE[cache_key] = {"frame": frame_num, "value": depth_arr.copy()}
+        return depth_arr
+
+    warmup = min(1.0, frame_num / 24.0)
+    alpha = 0.12 + 0.28 * warmup
+    smoothed = alpha * depth_arr + (1.0 - alpha) * previous_depth
+    _DEPTH_EMA_CACHE[cache_key] = {"frame": frame_num, "value": smoothed.copy()}
+    return smoothed
 
 @torch.no_grad()
-def transform_image_3d(img_filepath, midas_model, midas_transform, device, rot_mat=torch.eye(3).unsqueeze(0), translate=(0.,0.,-0.04), near=2000, far=20000, fov_deg=60, padding_mode='border', sampling_mode='bicubic', midas_weight=0.3, spherical=False, debug_dir=None, frame_num=0):
-    import midas_utils
+def transform_image_3d(img_filepath, adabins_helper, device, rot_mat=torch.eye(3).unsqueeze(0), translate=(0.,0.,-0.04), near=2000, far=20000, fov_deg=60, padding_mode='border', sampling_mode='bicubic', spherical=False, debug_dir=None, frame_num=0):
     img_pil = Image.open(open(img_filepath, 'rb')).convert('RGB')
     w, h = img_pil.size
     image_tensor = torchvision.transforms.functional.to_tensor(img_pil).to(device)
 
-    want_adabins_blend = midas_weight < 1.0 and _MAIN_WANTS_ADABINS
-    adabins_depth_np = None
+    if adabins_helper is None:
+        raise RuntimeError("AdaBins helper is not initialized")
 
-    if want_adabins_blend and not _INFERENCE_HELPER_AVAILABLE:
-        print(
-            "[WARN] AdaBins (InferenceHelper) not importable; using MiDaS depth only. "
-            "Add AdaBins to PYTHONPATH and weights under models/, or set USE_ADABINS = False in src/discodiff/main.py."
-        )
-    elif want_adabins_blend:
-        # AdaBins — predictions using nyu dataset (cached per device)
-        device_str = str(device)
-        if device_str not in _ADABINS_CACHE:
-            print(f"[AdaBins] Loading model for {device_str}...")
-            _ADABINS_CACHE[device_str] = InferenceHelper(dataset='nyu', device=device)
-        infer_helper = _ADABINS_CACHE[device_str]
-
-        image_pil_area = w * h
-        if image_pil_area > MAX_ADABINS_AREA:
-            scale = math.sqrt(MAX_ADABINS_AREA) / math.sqrt(image_pil_area)
-            depth_input = img_pil.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
-        elif image_pil_area < MIN_ADABINS_AREA:
-            scale = math.sqrt(MIN_ADABINS_AREA) / math.sqrt(image_pil_area)
-            depth_input = img_pil.resize((int(w * scale), int(h * scale)), Image.BICUBIC)
-        else:
-            depth_input = img_pil
-        try:
-            _, adabins_depth = infer_helper.predict_pil(depth_input)
-            if image_pil_area != MAX_ADABINS_AREA:
-                adabins_depth = torchvision.transforms.functional.resize(
-                    torch.from_numpy(adabins_depth),
-                    image_tensor.shape[-2:],
-                    interpolation=torchvision.transforms.functional.InterpolationMode.BICUBIC,
-                ).squeeze().to(device)
-            else:
-                adabins_depth = torch.from_numpy(adabins_depth).squeeze().to(device)
-            adabins_depth_np = adabins_depth.cpu().numpy()
-        except Exception as e:
-            print(f"[AdaBins] ERROR: {e} — falling back to MiDaS only")
-            adabins_depth_np = None
-
-    torch.cuda.empty_cache()
-
-    # MiDaS
-    img_midas = midas_utils.read_image(img_filepath)
-    img_midas_input = midas_transform({"image": img_midas})["image"]
-    midas_optimize = True
-
-    # MiDaS depth estimation implementation
-    sample = torch.from_numpy(img_midas_input).float().to(device).unsqueeze(0)
-    if midas_optimize==True and device == torch.device("cuda"):
-        sample = sample.to(memory_format=torch.channels_last)  
-        sample = sample.half()
-    prediction_torch = midas_model.forward(sample)
-    prediction_torch = torch.nn.functional.interpolate(
-            prediction_torch.unsqueeze(1),
-            size=img_midas.shape[:2],
-            mode="bicubic",
-            align_corners=False,
-        ).squeeze()
-    prediction_np = prediction_torch.clone().cpu().numpy()
-
-    torch.cuda.empty_cache()
-
-    # MiDaS makes the near values greater, and the far values lesser. Let's reverse that and try to align with AdaBins a bit better.
-    prediction_np = np.subtract(50.0, prediction_np)
-    prediction_np = prediction_np / 19.0
-
-    _save_3d_debug(debug_dir, frame_num, 'depth_midas', prediction_np)
-    if want_adabins_blend and adabins_depth_np is not None:
-        adabins_weight = 1.0 - midas_weight
-        depth_map = prediction_np * midas_weight + adabins_depth_np * adabins_weight
-        _save_3d_debug(debug_dir, frame_num, 'depth_adabins', adabins_depth_np)
+    image_pil_area = w * h
+    if image_pil_area > MAX_ADABINS_AREA:
+        scale = math.sqrt(MAX_ADABINS_AREA) / math.sqrt(image_pil_area)
+        depth_input = img_pil.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+    elif image_pil_area < MIN_ADABINS_AREA:
+        scale = math.sqrt(MIN_ADABINS_AREA) / math.sqrt(image_pil_area)
+        depth_input = img_pil.resize((int(w * scale), int(h * scale)), Image.BICUBIC)
     else:
-        depth_map = prediction_np
+        depth_input = img_pil
+
+    try:
+        _, adabins_depth = adabins_helper.predict_pil(depth_input)
+        adabins_depth_np = np.asarray(adabins_depth, dtype=np.float32)
+        adabins_depth_np = np.squeeze(adabins_depth_np)
+        if adabins_depth_np.ndim != 2 or adabins_depth_np.shape != (h, w):
+            adabins_depth_np = cv2.resize(adabins_depth_np, (w, h), interpolation=cv2.INTER_CUBIC)
+        adabins_depth_np = np.nan_to_num(adabins_depth_np, nan=0.0, posinf=0.0, neginf=0.0)
+    except Exception as e:
+        raise RuntimeError(f"AdaBins depth prediction failed: {e}") from e
+
+    torch.cuda.empty_cache()
+
+    depth_map = _robust_normalize_depth(adabins_depth_np)
+    _save_3d_debug(debug_dir, frame_num, 'depth_adabins', depth_map)
+
+    depth_map = _smooth_depth_temporally(depth_map, frame_num, str(debug_dir or "default"))
+    depth_map = 0.5 + (2.0 * depth_map)
     _save_3d_debug(debug_dir, frame_num, 'depth_blended', depth_map)
 
     depth_map = np.expand_dims(depth_map, axis=0)
     depth_tensor = torch.from_numpy(depth_map).squeeze().to(device)
+    depth_tensor = torch.nan_to_num(depth_tensor, nan=0.0, posinf=0.0, neginf=0.0)
 
     pixel_aspect = 1.0 # really.. the aspect of an individual pixel! (so usually 1.0)
     persp_cam_old = p3d.FoVPerspectiveCameras(near, far, pixel_aspect, fov=fov_deg, degrees=True, device=device)
@@ -155,7 +131,7 @@ def transform_image_3d(img_filepath, midas_model, midas_transform, device, rot_m
     xyz_old_cam_xy = persp_cam_old.get_full_projection_transform().transform_points(xyz_old_world)[:,0:2]
     xyz_new_cam_xy = persp_cam_new.get_full_projection_transform().transform_points(xyz_old_world)[:,0:2]
 
-    offset_xy = xyz_new_cam_xy - xyz_old_cam_xy
+    offset_xy = torch.nan_to_num(xyz_new_cam_xy - xyz_old_cam_xy, nan=0.0, posinf=0.0, neginf=0.0)
     _save_3d_debug(debug_dir, frame_num, 'flow_field', offset_xy.reshape(h, w, 2).cpu().numpy())
     # affine_grid theta param expects a batch of 2D mats. Each is 2x3 to do rotation+translation.
     identity_2d_batch = torch.tensor([[1.,0.,0.],[0.,1.,0.]], device=device).unsqueeze(0)
@@ -169,6 +145,8 @@ def transform_image_3d(img_filepath, midas_model, midas_transform, device, rot_m
         new_image = torch.nn.functional.grid_sample(stage_image, spherical_grid,align_corners=True) #, mode=sampling_mode, padding_mode=padding_mode, align_corners=False)
     else:
         new_image = torch.nn.functional.grid_sample(image_tensor.add(1/512 - 0.0001).unsqueeze(0), offset_coords_2d, mode=sampling_mode, padding_mode=padding_mode, align_corners=False)
+
+    new_image = torch.nan_to_num(new_image, nan=0.0, posinf=0.0, neginf=0.0)
 
     img_pil = torchvision.transforms.ToPILImage()(new_image.squeeze().clamp(0,1.))
     _save_3d_debug(debug_dir, frame_num, 'warped', img_pil)

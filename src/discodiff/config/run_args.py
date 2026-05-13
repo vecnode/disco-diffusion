@@ -43,8 +43,6 @@ _DIRECT_KEYS: tuple[str, ...] = (
     "rotation_3d_x",
     "rotation_3d_y",
     "rotation_3d_z",
-    "midas_depth_model",
-    "midas_weight",
     "near_plane",
     "far_plane",
     "fov",

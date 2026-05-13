@@ -151,7 +151,6 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
     p.add_argument("--rotation-3d-x", type=str, dest="rotation_3d_x", metavar="KEYFRAMES")
     p.add_argument("--rotation-3d-y", type=str, dest="rotation_3d_y", metavar="KEYFRAMES")
     p.add_argument("--rotation-3d-z", type=str, dest="rotation_3d_z", metavar="KEYFRAMES")
-    p.add_argument("--midas-weight", type=float, dest="midas_weight")
     p.add_argument("--fov", type=float, dest="fov")
     p.add_argument("--turbo-mode", action=argparse.BooleanOptionalAction, dest="turbo_mode")
     p.add_argument("--turbo-steps", type=str, dest="turbo_steps", metavar="N")
@@ -195,7 +194,6 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         "rotation_3d_x",
         "rotation_3d_y",
         "rotation_3d_z",
-        "midas_weight",
         "fov",
         "turbo_mode",
         "turbo_steps",

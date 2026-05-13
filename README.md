@@ -69,6 +69,11 @@ uv run disco.py --generation-mode 3D --turbo-mode --width 1024 --height 576 \
 {"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"], "40": ["the sea, volumetric light, wide angle"]}
 EOF
 
+
+ffmpeg -framerate 25 -pattern_type glob -i "./output/example/render/*.png" -c:v libx264 -preset slow -crf 12 -pix_fmt yuv444p -movflags +faststart "./output/example/render_25fps.mp4"
+
+
+
 ```
 
 ## Platform

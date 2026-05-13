@@ -1,4 +1,4 @@
-"""3D / depth warping (MiDaS, AdaBins blend, pytorch3d)."""
+"""3D / depth warping (AdaBins, pytorch3d)."""
 
 from .warp import (
     MAX_ADABINS_AREA,

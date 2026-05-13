@@ -111,8 +111,6 @@ def main(cli_overrides: dict | None = None) -> None:
     rotation_3d_x = "0: (0)"
     rotation_3d_y = "0: (0)"
     rotation_3d_z = "0: (0)"
-    midas_depth_model = "dpt_large"
-    midas_weight = 0.6
     near_plane = 200
     far_plane = 1000
     fov = 60
@@ -121,7 +119,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
     turbo_mode = True
     turbo_steps = "3" # ["2","3","4","5","6","10"]
-    turbo_preroll = 10 # frames
+    turbo_preroll = 24 # frames
 
     frames_scale = 1500
     frames_skip_steps = '60%'
@@ -151,9 +149,6 @@ def main(cli_overrides: dict | None = None) -> None:
     if GENERATION_MODE == 'Video Input':
         steps = video_init_steps
 
-    # geometry.warp reads MAIN_USE_ADABINS before attempting AdaBins (MiDaS-only when false).
-    os.environ['MAIN_USE_ADABINS'] = '1' if USE_ADABINS else '0'
-
 
 
     inputDirPath = f'{ROOT_PATH}/input'
@@ -179,20 +174,6 @@ def main(cli_overrides: dict | None = None) -> None:
 
     from .guidance.clip_cuts import MakeCutouts, MakeCutoutsDango, range_loss, spherical_dist_loss, tv_loss
     from .diffusion import iter_clip_guided_samples, timestep_after_skip
-
-    try:
-        from midas.dpt_depth import DPTDepthModel
-    except:
-        if not os.path.exists('MiDaS'):
-            gitclone("https://github.com/isl-org/MiDaS.git", branch_arg="v3")
-        if not os.path.exists('MiDaS/midas_utils.py'):
-            shutil.move('MiDaS/utils.py', 'MiDaS/midas_utils.py')
-        if not os.path.exists(f'{model_path}/dpt_large-midas-2f21e586.pt'):
-            wget("https://github.com/intel-isl/DPT/releases/download/1_0/dpt_large-midas-2f21e586.pt", model_path)
-        sys.path.append(f'{PROJECT_DIR}/MiDaS')
-
-
-
 
     # Package helpers (geometry.warp, config.keyframes) — no upstream clone.
     sys.path.append(PROJECT_DIR)
@@ -284,108 +265,11 @@ def main(cli_overrides: dict | None = None) -> None:
             print('Disabling CUDNN for A100 gpu', file=sys.stderr)
             torch.backends.cudnn.enabled = False
 
-    ### Define Midas functions
-
-    from midas.dpt_depth import DPTDepthModel
-    from midas.midas_net import MidasNet
-    from midas.midas_net_custom import MidasNet_small
-    from midas.transforms import Resize, NormalizeImage, PrepareForNet
-
-    # Initialize MiDaS depth model.
-    # It remains resident in VRAM and likely takes around 2GB VRAM.
-    # You could instead initialize it for each frame (and free it after each frame) to save VRAM.. but initializing it is slow.
-
-    default_models = {
-        "midas_v21_small": f"{model_path}/midas_v21_small-70d6b9c8.pt",
-        "midas_v21": f"{model_path}/midas_v21-f6b98070.pt",
-        "dpt_large": f"{model_path}/dpt_large-midas-2f21e586.pt",
-        "dpt_hybrid": f"{model_path}/dpt_hybrid-midas-501f0c75.pt",
-        "dpt_hybrid_nyu": f"{model_path}/dpt_hybrid_nyu-2ce69ec7.pt",}
-
-
-    def init_midas_depth_model(midas_model_type="dpt_large", optimize=True):
-        midas_model = None
-        net_w = None
-        net_h = None
-        resize_mode = None
-        normalization = None
-
-        print(f"Initializing MiDaS '{midas_model_type}' depth model")
-        # load network
-        midas_model_path = default_models[midas_model_type]
-
-        if midas_model_type == "dpt_large": # DPT-Large
-            midas_model = DPTDepthModel(
-                path=midas_model_path,
-                backbone="vitl16_384",
-                non_negative=True,
-            )
-            net_w, net_h = 384, 384
-            resize_mode = "minimal"
-            normalization = NormalizeImage(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-        elif midas_model_type == "dpt_hybrid": #DPT-Hybrid
-            midas_model = DPTDepthModel(
-                path=midas_model_path,
-                backbone="vitb_rn50_384",
-                non_negative=True,
-            )
-            net_w, net_h = 384, 384
-            resize_mode="minimal"
-            normalization = NormalizeImage(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-        elif midas_model_type == "dpt_hybrid_nyu": #DPT-Hybrid-NYU
-            midas_model = DPTDepthModel(
-                path=midas_model_path,
-                backbone="vitb_rn50_384",
-                non_negative=True,
-            )
-            net_w, net_h = 384, 384
-            resize_mode="minimal"
-            normalization = NormalizeImage(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-        elif midas_model_type == "midas_v21":
-            midas_model = MidasNet(midas_model_path, non_negative=True)
-            net_w, net_h = 384, 384
-            resize_mode="upper_bound"
-            normalization = NormalizeImage(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-            )
-        elif midas_model_type == "midas_v21_small":
-            midas_model = MidasNet_small(midas_model_path, features=64, backbone="efficientnet_lite3", exportable=True, non_negative=True, blocks={'expand': True})
-            net_w, net_h = 256, 256
-            resize_mode="upper_bound"
-            normalization = NormalizeImage(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-            )
-        else:
-            print(f"midas_model_type '{midas_model_type}' not implemented")
-            assert False
-
-        midas_transform = T.Compose(
-            [
-                Resize(
-                    net_w,
-                    net_h,
-                    resize_target=None,
-                    keep_aspect_ratio=True,
-                    ensure_multiple_of=32,
-                    resize_method=resize_mode,
-                    image_interpolation_method=cv2.INTER_CUBIC,
-                ),
-                normalization,
-                PrepareForNet(),
-            ]
-        )
-
-        midas_model.eval()
-
-        if optimize==True:
-            if DEVICE == torch.device("cuda"):
-                midas_model = midas_model.to(memory_format=torch.channels_last)  
-                midas_model = midas_model.half()
-
-        midas_model.to(DEVICE)
-
-        print(f"MiDaS '{midas_model_type}' depth model initialized.")
-        return midas_model, midas_transform, net_w, net_h, resize_mode, normalization
+    def init_adabins_depth_helper():
+        print("Initializing AdaBins depth helper")
+        adabins_helper = InferenceHelper(dataset='nyu', device=DEVICE)
+        print("AdaBins depth helper initialized.")
+        return adabins_helper
 
 
 
@@ -407,28 +291,50 @@ def main(cli_overrides: dict | None = None) -> None:
 
     stop_on_next_loop = False  # Make sure GPU memory doesn't get corrupted from cancelling the run mid-way through, allow a full frame to complete
     TRANSLATION_SCALE = 1.0/200.0
+    stabilization_warmup_frames = max(24, int(turbo_preroll))
+    effective_turbo_preroll = stabilization_warmup_frames
+
+    def _smoothstep(value: float) -> float:
+        value = max(0.0, min(1.0, value))
+        return value * value * (3.0 - 2.0 * value)
+
+    def _stabilization_progress(frame_index: int) -> float:
+        if stabilization_warmup_frames <= 0:
+            return 1.0
+        return _smoothstep(frame_index / float(stabilization_warmup_frames))
 
 
-    def do_3d_step(img_filepath, frame_num, midas_model, midas_transform):
-      if args.key_frames:
-        translation_x = args.translation_x_series[frame_num]
-        translation_y = args.translation_y_series[frame_num]
-        translation_z = args.translation_z_series[frame_num]
-        rotation_3d_x = args.rotation_3d_x_series[frame_num]
-        rotation_3d_y = args.rotation_3d_y_series[frame_num]
-        rotation_3d_z = args.rotation_3d_z_series[frame_num]
-        # Silently read keyframe values
+    def do_3d_step(img_filepath, frame_num, adabins_helper):
+        warmup_progress = _stabilization_progress(frame_num)
+        motion_scale = 0.2 + 0.8 * warmup_progress
 
-      translate_xyz = [-translation_x*TRANSLATION_SCALE, translation_y*TRANSLATION_SCALE, -translation_z*TRANSLATION_SCALE]
-      rotate_xyz_degrees = [rotation_3d_x, rotation_3d_y, rotation_3d_z]
-      rotate_xyz = [math.radians(rotate_xyz_degrees[0]), math.radians(rotate_xyz_degrees[1]), math.radians(rotate_xyz_degrees[2])]
-      rot_mat = p3dT.euler_angles_to_matrix(torch.tensor(rotate_xyz, device=device), "XYZ").unsqueeze(0)
-      next_step_pil = dxf.transform_image_3d(img_filepath, midas_model, midas_transform, DEVICE,
-                                              rot_mat, translate_xyz, args.near_plane, args.far_plane,
-                                              args.fov, padding_mode=args.padding_mode,
-                                              sampling_mode=args.sampling_mode, midas_weight=args.midas_weight,
-                                              debug_dir=debug3dFolder, frame_num=frame_num)
-      return next_step_pil
+        if args.key_frames:
+            translation_x = args.translation_x_series[frame_num]
+            translation_y = args.translation_y_series[frame_num]
+            translation_z = args.translation_z_series[frame_num]
+            rotation_3d_x = args.rotation_3d_x_series[frame_num]
+            rotation_3d_y = args.rotation_3d_y_series[frame_num]
+            rotation_3d_z = args.rotation_3d_z_series[frame_num]
+            # Silently read keyframe values
+
+        translate_xyz = [
+            -translation_x * TRANSLATION_SCALE * motion_scale,
+            translation_y * TRANSLATION_SCALE * motion_scale,
+            -translation_z * TRANSLATION_SCALE * motion_scale,
+        ]
+        rotate_xyz_degrees = [
+            rotation_3d_x * motion_scale,
+            rotation_3d_y * motion_scale,
+            rotation_3d_z * motion_scale,
+        ]
+        rotate_xyz = [math.radians(rotate_xyz_degrees[0]), math.radians(rotate_xyz_degrees[1]), math.radians(rotate_xyz_degrees[2])]
+        rot_mat = p3dT.euler_angles_to_matrix(torch.tensor(rotate_xyz, device=device), "XYZ").unsqueeze(0)
+        next_step_pil = dxf.transform_image_3d(img_filepath, adabins_helper, DEVICE,
+                               rot_mat, translate_xyz, args.near_plane, args.far_plane,
+                               args.fov, padding_mode=args.padding_mode,
+                               sampling_mode=args.sampling_mode,
+                               debug_dir=debug3dFolder, frame_num=frame_num)
+        return next_step_pil
 
     def symmetry_transformation_fn(x):
         if args.use_horizontal_symmetry:
@@ -448,8 +354,9 @@ def main(cli_overrides: dict | None = None) -> None:
       seed = args.seed
       print(range(args.start_frame, args.max_frames))
 
-      if (args.animation_mode == "3D") and (args.midas_weight > 0.0):
-          midas_model, midas_transform, midas_net_w, midas_net_h, midas_resize_mode, midas_normalization = init_midas_depth_model(args.midas_depth_model)
+      adabins_helper = None
+      if args.animation_mode == "3D":
+          adabins_helper = init_adabins_depth_helper()
       if args.animation_mode == "3D" and turbo_mode:
           print(
               f"[turbo] steps={args.steps} turbo_steps={int(turbo_steps)} "
@@ -517,49 +424,53 @@ def main(cli_overrides: dict | None = None) -> None:
               skip_steps = args.calc_frames_skip_steps
 
           if args.animation_mode == "3D":
-            if frame_num > 0:
-              seed += 1    
-              if resume_run and frame_num == start_frame:
-                img_filepath = batchFolder+f"/{batch_name}({batchNum})_{start_frame-1:04}.png"
-                if turbo_mode and frame_num > turbo_preroll:
-                  shutil.copyfile(img_filepath, old_frame_scaled_path)
-              else:
-                img_filepath = prev_frame_path
+                        if frame_num > 0:
+                            seed += 1
+                            if resume_run and frame_num == start_frame:
+                                img_filepath = batchFolder + f"/{batch_name}({batchNum})_{start_frame-1:04}.png"
+                                if turbo_mode and frame_num > effective_turbo_preroll:
+                                    shutil.copyfile(img_filepath, old_frame_scaled_path)
+                            else:
+                                img_filepath = prev_frame_path
 
-              next_step_pil = do_3d_step(img_filepath, frame_num, midas_model, midas_transform)
-              next_step_pil.save(prev_frame_scaled_path)
+                            next_step_pil = do_3d_step(img_filepath, frame_num, adabins_helper)
+                            next_step_pil.save(prev_frame_scaled_path)
 
-              ### Turbo mode - skip some diffusions, use 3d morph for clarity and to save time
-              if turbo_mode:
-                if frame_num == turbo_preroll: #start tracking oldframe
-                  next_step_pil.save(old_frame_scaled_path)#stash for later blending          
-                elif frame_num > turbo_preroll:
-                  if not os.path.exists(old_frame_scaled_path):
-                    # Bootstrap turbo old-frame state if missing (fresh run / resumed run without cache).
-                    next_step_pil.save(old_frame_scaled_path)
-                  #set up 2 warped image sequences, old & new, to blend toward new diff image
-                  old_frame = do_3d_step(old_frame_scaled_path, frame_num, midas_model, midas_transform)
-                  old_frame.save(old_frame_scaled_path)
-                  if frame_num % int(turbo_steps) != 0: 
-                    print('turbo skip this frame: skipping clip diffusion steps')
-                    filename = f'{args.batch_name}({args.batchNum})_{frame_num:04}.png'
-                    blend_factor = ((frame_num % int(turbo_steps))+1)/int(turbo_steps)
-                    print('turbo skip this frame: skipping clip diffusion steps and saving blended frame')
-                    newWarpedImg = cv2.imread(prev_frame_scaled_path)#this is already updated..
-                    oldWarpedImg = cv2.imread(old_frame_scaled_path)
-                    blendedImage = cv2.addWeighted(newWarpedImg, blend_factor, oldWarpedImg,1-blend_factor, 0.0)
-                    cv2.imwrite(f'{batchFolder}/{filename}',blendedImage)
-                    next_step_pil.save(f'{img_filepath}') # save it also as prev_frame to feed next iteration
-                    continue
-                  else:
-                    #if not a skip frame, will run diffusion and need to blend.
-                    oldWarpedImg = cv2.imread(prev_frame_scaled_path)
-                    cv2.imwrite(old_frame_scaled_path,oldWarpedImg)#swap in for blending later 
-                    print('clip/diff this frame - generate clip diff image')
+                            ### Turbo mode - skip some diffusions, use 3d morph for clarity and to save time
+                            if turbo_mode:
+                                if frame_num == effective_turbo_preroll:  # start tracking oldframe
+                                    next_step_pil.save(old_frame_scaled_path)  # stash for later blending
+                                elif frame_num > effective_turbo_preroll:
+                                    if not os.path.exists(old_frame_scaled_path):
+                                        # Bootstrap turbo old-frame state if missing (fresh run / resumed run without cache).
+                                        next_step_pil.save(old_frame_scaled_path)
+                                    # set up 2 warped image sequences, old & new, to blend toward new diff image
+                                    old_frame = do_3d_step(old_frame_scaled_path, frame_num, adabins_helper)
+                                    old_frame.save(old_frame_scaled_path)
+                                    if frame_num % int(turbo_steps) != 0:
+                                        print('turbo skip this frame: skipping clip diffusion steps')
+                                        filename = f'{args.batch_name}({args.batchNum})_{frame_num:04}.png'
+                                        blend_factor = ((frame_num % int(turbo_steps)) + 1) / int(turbo_steps)
+                                        print('turbo skip this frame: skipping clip diffusion steps and saving blended frame')
+                                        newWarpedImg = cv2.imread(prev_frame_scaled_path)  # this is already updated..
+                                        oldWarpedImg = cv2.imread(old_frame_scaled_path)
+                                        blendedImage = cv2.addWeighted(newWarpedImg, blend_factor, oldWarpedImg, 1 - blend_factor, 0.0)
+                                        cv2.imwrite(f'{batchFolder}/{filename}', blendedImage)
+                                        next_step_pil.save(f'{img_filepath}')  # save it also as prev_frame to feed next iteration
+                                        continue
+                                    else:
+                                        # if not a skip frame, will run diffusion and need to blend.
+                                        oldWarpedImg = cv2.imread(prev_frame_scaled_path)
+                                        cv2.imwrite(old_frame_scaled_path, oldWarpedImg)  # swap in for blending later
+                                        print('clip/diff this frame - generate clip diff image')
 
-              init_image = prev_frame_scaled_path
-              init_scale = args.frames_scale
-              skip_steps = args.calc_frames_skip_steps
+                            init_image = prev_frame_scaled_path
+                            warmup_progress = _stabilization_progress(frame_num)
+                            init_scale = int(round(args.frames_scale * (1.15 - 0.15 * warmup_progress)))
+                            skip_steps = min(
+                                    args.steps - 1,
+                                    int(round(args.calc_frames_skip_steps + (10.0 * (1.0 - warmup_progress))))
+                            )
 
           if  args.animation_mode == "Video Input":
             init_scale = args.video_init_frames_scale
@@ -912,8 +823,6 @@ def main(cli_overrides: dict | None = None) -> None:
           'rotation_3d_x': rotation_3d_x,
           'rotation_3d_y': rotation_3d_y,
           'rotation_3d_z': rotation_3d_z,
-          'midas_depth_model': midas_depth_model,
-          'midas_weight': midas_weight,
           'near_plane': near_plane,
           'far_plane': far_plane,
           'fov': fov,
@@ -1289,7 +1198,7 @@ def main(cli_overrides: dict | None = None) -> None:
     def _apply_pre_animation_cli_overrides(ov: dict | None) -> None:
         nonlocal GENERATION_MODE, max_frames, width_height, side_x, side_y
         nonlocal translation_x, translation_y, translation_z
-        nonlocal rotation_3d_x, rotation_3d_y, rotation_3d_z, midas_weight, fov
+        nonlocal rotation_3d_x, rotation_3d_y, rotation_3d_z, fov
         nonlocal zoom, frames_scale, frames_skip_steps, turbo_mode, turbo_steps
 
         if ov and "GENERATION_MODE" in ov:
@@ -1316,8 +1225,6 @@ def main(cli_overrides: dict | None = None) -> None:
             rotation_3d_y = ov["rotation_3d_y"]
         if "rotation_3d_z" in ov:
             rotation_3d_z = ov["rotation_3d_z"]
-        if "midas_weight" in ov:
-            midas_weight = ov["midas_weight"]
         if "fov" in ov:
             fov = ov["fov"]
         if "turbo_mode" in ov:
@@ -1823,7 +1730,7 @@ def main(cli_overrides: dict | None = None) -> None:
         nonlocal video_init_check_consistency, text_prompts, image_prompts
         nonlocal width_height, side_x, side_y, steps, GENERATION_MODE, max_frames
         nonlocal translation_x, translation_y, translation_z
-        nonlocal rotation_3d_x, rotation_3d_y, rotation_3d_z, midas_weight, near_plane, far_plane, fov
+        nonlocal rotation_3d_x, rotation_3d_y, rotation_3d_z, near_plane, far_plane, fov
         nonlocal padding_mode, sampling_mode
         nonlocal turbo_mode, turbo_steps, turbo_preroll, frames_scale, frames_skip_steps
         nonlocal video_init_frames_scale, video_init_frames_skip_steps
@@ -1887,8 +1794,6 @@ def main(cli_overrides: dict | None = None) -> None:
             rotation_3d_y = ov["rotation_3d_y"]
         if "rotation_3d_z" in ov:
             rotation_3d_z = ov["rotation_3d_z"]
-        if "midas_weight" in ov:
-            midas_weight = ov["midas_weight"]
         if "near_plane" in ov:
             near_plane = ov["near_plane"]
         if "far_plane" in ov:
