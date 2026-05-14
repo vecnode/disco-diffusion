@@ -76,13 +76,13 @@ def _smooth_depth_temporally(depth_map: np.ndarray, frame_num: int, cache_key: s
     return smoothed
 
 @torch.no_grad()
-def transform_image_3d(img_filepath, adabins_helper, device, rot_mat=torch.eye(3).unsqueeze(0), translate=(0.,0.,-0.04), near=2000, far=20000, fov_deg=60, padding_mode='border', sampling_mode='bicubic', spherical=False, debug_dir=None, frame_num=0):
+def transform_image_3d(img_filepath, depth_backend, device, rot_mat=torch.eye(3).unsqueeze(0), translate=(0.,0.,-0.04), near=2000, far=20000, fov_deg=60, padding_mode='border', sampling_mode='bicubic', spherical=False, debug_dir=None, frame_num=0):
     img_pil = Image.open(open(img_filepath, 'rb')).convert('RGB')
     w, h = img_pil.size
     image_tensor = torchvision.transforms.functional.to_tensor(img_pil).to(device)
 
-    if adabins_helper is None:
-        raise RuntimeError("AdaBins helper is not initialized")
+    if depth_backend is None:
+        raise RuntimeError("Depth backend is not initialized")
 
     image_pil_area = w * h
     if image_pil_area > MAX_ADABINS_AREA:
@@ -95,19 +95,17 @@ def transform_image_3d(img_filepath, adabins_helper, device, rot_mat=torch.eye(3
         depth_input = img_pil
 
     try:
-        _, adabins_depth = adabins_helper.predict_pil(depth_input)
-        adabins_depth_np = np.asarray(adabins_depth, dtype=np.float32)
-        adabins_depth_np = np.squeeze(adabins_depth_np)
-        if adabins_depth_np.ndim != 2 or adabins_depth_np.shape != (h, w):
-            adabins_depth_np = cv2.resize(adabins_depth_np, (w, h), interpolation=cv2.INTER_CUBIC)
-        adabins_depth_np = np.nan_to_num(adabins_depth_np, nan=0.0, posinf=0.0, neginf=0.0)
+        depth_np = depth_backend.predict_depth(depth_input, (w, h))
     except Exception as e:
-        raise RuntimeError(f"AdaBins depth prediction failed: {e}") from e
+        raise RuntimeError(f"Depth prediction failed: {e}") from e
 
     torch.cuda.empty_cache()
 
-    depth_map = _robust_normalize_depth(adabins_depth_np)
-    _save_3d_debug(debug_dir, frame_num, 'depth_adabins', depth_map)
+    depth_map = _robust_normalize_depth(depth_np)
+    depth_contrast = float(getattr(depth_backend, "depth_contrast", 1.0))
+    if abs(depth_contrast - 1.0) > 1e-6:
+        depth_map = np.clip(0.5 + ((depth_map - 0.5) * depth_contrast), 0.0, 1.0)
+    _save_3d_debug(debug_dir, frame_num, 'depth_backend', depth_map)
 
     depth_map = _smooth_depth_temporally(depth_map, frame_num, str(debug_dir or "default"))
     depth_map = 0.5 + (2.0 * depth_map)

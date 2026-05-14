@@ -14,44 +14,33 @@ uv run disco.py
 uv run python -m discodiff.main
 ```
 
-#### Text-to-image
+## Text-to-video (3D)
 
 ```sh
-# 1) Baseline — square 512×512, prompt via stdin JSON
-uv run disco.py --width 512 --height 512 --text-prompts-json /dev/stdin <<'EOF'
-{"0": ["cinematic coastal lighthouse, dusk fog"]}
+
+# Latent
+
+# Optional overrides:
+#   --depth-backend marigold|adabins
+#   --latent-first-frame txt2img|black
+#   --latent-strength 0.25            # lower = more temporal coherence
+#   --latent-temporal-blend 0.20      # blend warped prev frame into output
+#   DISCO_MARIGOLD_MODEL=prs-eth/marigold-depth-lcm-v1-0
+#   DISCO_MARIGOLD_MODEL_DIR=/absolute/path/to/local/marigold
+#   DISCO_MARIGOLD_DEPTH_CONTRAST=1.35  # increase perceived depth parallax
+#   DISCO_MARIGOLD_INVERT_DEPTH=0       # set to 1 only if scene depth is reversed
+
+uv run disco.py --generation-mode 3D_latent --turbo-mode --width 1024 --height 576 \
+  --max-frames 120 --set-seed 42 --steps 100 \
+  --depth-backend marigold --latent-first-frame txt2img \
+  --latent-strength 0.25 --latent-temporal-blend 0.20 \
+  --text-prompts-json /dev/stdin \
+  <<'EOF'
+{"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"], "40": ["the sea, volumetric light, wide angle"]}
 EOF
-```
 
-```sh
-# 2) Same resolution and prompt, fixed seed for reproducibility
-uv run disco.py --width 1024 --height 576 --set-seed 42 --steps 250 \
-  --text-prompts-json /dev/stdin <<'EOF'
-{"0": ["cinematic coastal lighthouse, dusk fog"]}
-EOF
-```
 
-#### Text-to-video (2D)
-
-```sh
-# Example A — single resolution, two prompts (holds last prompt after frame 30)
-uv run disco.py --generation-mode 2D --width 512 --height 512 --set-seed 42 --steps 100 \
-  --text-prompts-json /dev/stdin <<'EOF'
-{"0": ["establishing shot of a coastal lighthouse at dawn, atmospheric"], "30": ["same scene, golden hour, warm light on the cliffs"]}
-EOF
-```
-
-```sh
-# Example B — higher spatial resolution, explicit multi-step schedule (adjust `max_frames` in main when producing longer sequences)
-uv run disco.py --generation-mode 2D --width 1024 --height 576 --set-seed 42 --steps 250 \
-  --text-prompts-json /dev/stdin <<'EOF'
-{"0": ["wide landscape, mountains and a field, misty morning"], "15": ["camera slowly dollying forward, same environment, sharper detail"]}
-EOF
-```
-
-#### Text-to-video (3D)
-
-```sh
+# CLIP-guided
 
 uv run disco.py --generation-mode 3D --turbo-mode --width 1024 --height 576 \
   --max-frames 120 --set-seed 42 --steps 100 \
@@ -70,39 +59,12 @@ uv run disco.py --generation-mode 3D --turbo-mode --width 1024 --height 576 \
 EOF
 
 
-# New latent backend mode (img2img over the same 3D warp/turbo world loop)
-# Requires: uv add diffusers transformers accelerate
-# First run downloads to: ./models/latent/runwayml_stable-diffusion-v1-5/
-# Optional override: DISCO_LATENT_MODEL_DIR=/absolute/path/to/local/model
-
-uv run disco.py --generation-mode 3D_latent --turbo-mode --width 1024 --height 576 \
-  --max-frames 120 --set-seed 42 --steps 100 \
-  --text-prompts-json /dev/stdin \
-  <<'EOF'
-{"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"], "40": ["the sea, volumetric light, wide angle"]}
-EOF
-
+# Make video
 
 ffmpeg -framerate 25 -pattern_type glob -i "./output/example/render/*.png" -c:v libx264 -preset slow -crf 12 -pix_fmt yuv444p -movflags +faststart "./output/example/render_25fps.mp4"
 
-
-
 ```
 
-## Platform
-
-**Linux tested.** This repo is maintained and expected to run on **glibc-based Linux** with a working **NVIDIA stack** (proprietary driver so `nvidia-smi` reports your GPU). Other OSes are currently out of scope; if you run elsewhere, you may see a stderr warning - set `DISCO_ALLOW_NON_LINUX=1` to suppress it (still unsupported).
-
-### RTX and OS Device Layer
-
-Device selection is centralized in `src/discodiff/platform/device.py`.
-
-Linux + NVIDIA CUDA (RTX preferred) | Supported | `auto` prefers RTX-named CUDA devices, then falls back to first CUDA GPU.
-CPU fallback | Supported | Used when no requested accelerator is available.
-
-Known caveats:
-- RTX detection is name-based (`RTX` in GPU name) and may treat non-RTX CUDA devices as generic CUDA.
-- Driver/toolkit mismatches can still fail at runtime even when device selection succeeds.
 
 
 ### Device Selection

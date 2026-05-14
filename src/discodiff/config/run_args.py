@@ -29,9 +29,6 @@ _DIRECT_KEYS: tuple[str, ...] = (
     "side_y",
     "timestep_respacing",
     "diffusion_steps",
-    "video_init_path",
-    "extract_nth_frame",
-    "video_init_seed_continuity",
     "key_frames",
     "interp_spline",
     "start_frame",
@@ -81,19 +78,6 @@ _DIRECT_KEYS: tuple[str, ...] = (
     "use_vertical_symmetry",
     "use_horizontal_symmetry",
     "transformation_percent",
-    "video_init_steps",
-    "video_init_clip_guidance_scale",
-    "video_init_tv_scale",
-    "video_init_range_scale",
-    "video_init_sat_scale",
-    "video_init_cutn_batches",
-    "video_init_skip_steps",
-    "video_init_frames_scale",
-    "video_init_frames_skip_steps",
-    "video_init_flow_warp",
-    "video_init_flow_blend",
-    "video_init_check_consistency",
-    "video_init_blend_mode",
 )
 
 
@@ -122,16 +106,5 @@ def build_run_args_namespace(cfg: RunConfig) -> SimpleNamespace:
             "cut_icgray_p": eval(ns["cut_icgray_p"]),
         }
     )
-
-    if animation_mode == "Video Input":
-        args["steps"] = args["video_init_steps"]
-        args["clip_guidance_scale"] = args["video_init_clip_guidance_scale"]
-        args["tv_scale"] = args["video_init_tv_scale"]
-        args["range_scale"] = args["video_init_range_scale"]
-        args["sat_scale"] = args["video_init_sat_scale"]
-        args["cutn_batches"] = args["video_init_cutn_batches"]
-        args["skip_steps"] = args["video_init_skip_steps"]
-        args["frames_scale"] = args["video_init_frames_scale"]
-        args["frames_skip_steps"] = args["video_init_frames_skip_steps"]
 
     return SimpleNamespace(**args)

@@ -101,13 +101,6 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         dest="transformation_percent",
         help='JSON list e.g. [0.09] or comma floats e.g. "0.09"',
     )
-    p.add_argument("--video-init-flow-warp", action=argparse.BooleanOptionalAction, dest="video_init_flow_warp")
-    p.add_argument("--video-init-flow-blend", type=float, dest="video_init_flow_blend")
-    p.add_argument(
-        "--video-init-check-consistency",
-        action=argparse.BooleanOptionalAction,
-        dest="video_init_check_consistency",
-    )
     p.add_argument(
         "--text-prompts-json",
         type=str,
@@ -140,7 +133,7 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         "--generation-mode",
         type=str,
         dest="generation_mode",
-        choices=("None", "2D", "3D", "3D_latent", "Video Input"),
+        choices=("None", "2D", "3D", "3D_latent"),
         metavar="MODE",
         help='Pipeline mode (same as GENERATION_MODE in main.py). Overrides DISCO_GENERATION_MODE.',
     )
@@ -156,17 +149,36 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
     p.add_argument("--fov", type=float, dest="fov")
     p.add_argument("--padding-mode", type=str, dest="padding_mode")
     p.add_argument("--sampling-mode", type=str, dest="sampling_mode")
+    p.add_argument(
+        "--depth-backend",
+        type=str,
+        dest="depth_backend",
+        choices=("marigold",),
+        help="Depth estimator for 3D reprojection.",
+    )
     p.add_argument("--turbo-mode", action=argparse.BooleanOptionalAction, dest="turbo_mode")
     p.add_argument("--turbo-steps", type=str, dest="turbo_steps", metavar="N")
     p.add_argument("--turbo-preroll", type=_positive_int, dest="turbo_preroll", metavar="N")
     p.add_argument("--frames-scale", type=int, dest="frames_scale")
     p.add_argument("--frames-skip-steps", type=str, dest="frames_skip_steps", metavar="PERCENT")
-    p.add_argument("--video-init-frames-scale", type=int, dest="video_init_frames_scale")
     p.add_argument(
-        "--video-init-frames-skip-steps",
+        "--latent-first-frame",
         type=str,
-        dest="video_init_frames_skip_steps",
-        metavar="PERCENT",
+        dest="latent_first_frame_strategy",
+        choices=("txt2img", "black"),
+        help="How to seed frame 0 in 3D_latent when no init image is provided.",
+    )
+    p.add_argument(
+        "--latent-strength",
+        type=float,
+        dest="latent_strength",
+        help="Override img2img strength in 3D_latent (0..1). Lower values improve temporal coherence.",
+    )
+    p.add_argument(
+        "--latent-temporal-blend",
+        type=float,
+        dest="latent_temporal_blend",
+        help="Blend fraction of warped previous frame into each 3D_latent frame (0..1).",
     )
     p.add_argument(
         "--device",
@@ -211,14 +223,15 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         "fov",
         "padding_mode",
         "sampling_mode",
+        "depth_backend",
         "turbo_mode",
         "turbo_steps",
         "turbo_preroll",
         "frames_scale",
         "frames_skip_steps",
-        "video_init_frames_scale",
-        "video_init_frames_skip_steps",
-        "video_init_flow_blend",
+        "latent_first_frame_strategy",
+        "latent_strength",
+        "latent_temporal_blend",
         "perlin_init",
         "skip_augs",
         "randomize_class",
@@ -227,8 +240,6 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         "fuzzy_prompt",
         "use_vertical_symmetry",
         "use_horizontal_symmetry",
-        "video_init_flow_warp",
-        "video_init_check_consistency",
     ):
         v = getattr(ns, key)
         if v is not None:

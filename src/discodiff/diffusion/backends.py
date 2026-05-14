@@ -122,6 +122,7 @@ class LatentDiffusionBackend(DiffusionBackend):
             or self.models_root / "latent" / self._sanitize_repo_id(self.model_id)
         )
         self._pipe = None
+        self._txt2img_pipe = None
 
     @staticmethod
     def _sanitize_repo_id(repo_id: str) -> str:
@@ -159,6 +160,26 @@ class LatentDiffusionBackend(DiffusionBackend):
         pipe = pipe.to(self.device)
         pipe.set_progress_bar_config(disable=True)
         self._pipe = pipe
+
+    def _ensure_txt2img_pipe(self) -> None:
+        if self._txt2img_pipe is not None:
+            return
+        try:
+            from diffusers import StableDiffusionPipeline
+        except Exception as exc:  # pragma: no cover - import behavior depends on environment
+            raise RuntimeError(
+                "3D_latent first-frame txt2img requires StableDiffusionPipeline in diffusers"
+            ) from exc
+
+        dtype = torch.float16 if self.device.type == "cuda" else torch.float32
+
+        if not (self.local_model_dir / "model_index.json").exists():
+            self._download_to_local_dir()
+
+        pipe = StableDiffusionPipeline.from_pretrained(str(self.local_model_dir), torch_dtype=dtype)
+        pipe = pipe.to(self.device)
+        pipe.set_progress_bar_config(disable=True)
+        self._txt2img_pipe = pipe
 
     def prepare(self, prompt: list[str], seed: int | None, size: tuple[int, int]) -> BackendPromptState:
         prompt_text = ", ".join([p.split(":", 1)[0] for p in prompt]) if prompt else ""
@@ -206,3 +227,34 @@ class LatentDiffusionBackend(DiffusionBackend):
             generator=generator,
         )
         return result.images[0]
+
+    def generate_first_frame(
+        self,
+        *,
+        prompt_state: BackendPromptState,
+        steps: int,
+        guidance_scale: float,
+    ) -> Image.Image:
+        self._ensure_txt2img_pipe()
+
+        if not prompt_state.prompt_text:
+            raise RuntimeError("3D_latent requires at least one text prompt")
+
+        cfg_scale = float(guidance_scale)
+        if cfg_scale > 30.0:
+            cfg_scale = cfg_scale / 100.0
+        cfg_scale = max(1.0, min(20.0, cfg_scale))
+
+        generator = None
+        if prompt_state.seed is not None:
+            generator = torch.Generator(device=self.device).manual_seed(int(prompt_state.seed))
+
+        out = self._txt2img_pipe(
+            prompt=prompt_state.prompt_text,
+            num_inference_steps=max(1, int(steps)),
+            guidance_scale=cfg_scale,
+            height=prompt_state.size[1],
+            width=prompt_state.size[0],
+            generator=generator,
+        )
+        return out.images[0]
