@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 from PIL import Image
 
@@ -202,6 +203,16 @@ class LatentDiffusionBackend(DiffusionBackend):
         prompt_state: BackendPromptState = extra_guidance_state["prompt_state"]
         if not prompt_state.prompt_text:
             raise RuntimeError("3D_latent requires at least one text prompt")
+
+        init_color_reset = float(extra_guidance_state.get("latent_color_reset", 0.0) or 0.0)
+        init_color_reset = max(0.0, min(0.35, init_color_reset))
+        if init_color_reset > 0:
+            image_array = np.array(init_image.resize(prompt_state.size, Image.LANCZOS)).astype("float32") / 255.0
+            if init_color_reset > 0:
+                luminance = np.dot(image_array[..., :3], np.array([0.299, 0.587, 0.114], dtype="float32"))
+                neutral = np.repeat(luminance[..., None], 3, axis=2)
+                image_array = image_array * (1.0 - init_color_reset) + neutral * init_color_reset
+            init_image = Image.fromarray((np.clip(image_array, 0.0, 1.0) * 255.0).astype("uint8"))
 
         strength = float(strength_or_skip)
         if strength > 1.0:

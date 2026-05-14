@@ -181,6 +181,18 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         help="Blend fraction of warped previous frame into each 3D_latent frame (0..1).",
     )
     p.add_argument(
+        "--latent-novelty-strength",
+        type=float,
+        dest="latent_novelty_strength",
+        help="Extra img2img strength ramped in over the run to add novelty without abrupt motion.",
+    )
+    p.add_argument(
+        "--latent-color-reset",
+        type=float,
+        dest="latent_color_reset",
+        help="Blend conditioning images toward neutral color balance to prevent saturation drift.",
+    )
+    p.add_argument(
         "--device",
         type=str,
         dest="device",
@@ -232,6 +244,8 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         "latent_first_frame_strategy",
         "latent_strength",
         "latent_temporal_blend",
+        "latent_novelty_strength",
+        "latent_color_reset",
         "perlin_init",
         "skip_augs",
         "randomize_class",

@@ -123,6 +123,8 @@ def main(cli_overrides: dict | None = None) -> None:
     latent_first_frame_strategy = 'txt2img'  # ['txt2img', 'black']
     latent_strength = None  # Optional float in [0,1]
     latent_temporal_blend = 0.18  # Blend warped previous frame into latent output
+    latent_novelty_strength = 0.08  # Extra img2img strength ramped in over the run
+    latent_color_reset = 0.14  # Pull conditioning images toward neutral color balance
 
     display_rate = 20
     n_batches = 50
@@ -452,43 +454,51 @@ def main(cli_overrides: dict | None = None) -> None:
 
           model_stats = []
           for clip_model in clip_models:
-                model_stat = {"clip_model":None,"target_embeds":[],"make_cutouts":None,"weights":[]}
-                model_stat["clip_model"] = clip_model
+            model_stat = {"clip_model": None, "target_embeds": [], "make_cutouts": None, "weights": []}
+            model_stat["clip_model"] = clip_model
 
-                for prompt in frame_prompt:
-                    txt, weight = parse_prompt(prompt)
-                    txt = clip_model.encode_text(clip.tokenize(prompt).to(device)).float()
+            for prompt in frame_prompt:
+                txt, weight = parse_prompt(prompt)
+                txt = clip_model.encode_text(clip.tokenize(prompt).to(device)).float()
 
-                    if args.fuzzy_prompt:
-                        for i in range(25):
-                            model_stat["target_embeds"].append((txt + torch.randn(txt.shape, device=device, dtype=txt.dtype) * args.rand_mag).clamp(0,1))
-                            model_stat["weights"].append(weight)
-          else:
-                        model_stat["target_embeds"].append(txt)
+                if args.fuzzy_prompt:
+                    for _ in range(25):
+                        model_stat["target_embeds"].append(
+                            (txt + torch.randn(txt.shape, device=device, dtype=txt.dtype) * args.rand_mag).clamp(0, 1)
+                        )
                         model_stat["weights"].append(weight)
+                else:
+                    model_stat["target_embeds"].append(txt)
+                    model_stat["weights"].append(weight)
 
-                if image_prompt:
-                  model_stat["make_cutouts"] = MakeCutouts(clip_model.visual.input_resolution, cutn, skip_augs=skip_augs) 
-                  for prompt in image_prompt:
-                      path, weight = parse_prompt(prompt)
-                      img = Image.open(fetch(path)).convert('RGB')
-                      img = TF.resize(img, min(side_x, side_y, *img.size), T.InterpolationMode.LANCZOS)
-                      batch = model_stat["make_cutouts"](TF.to_tensor(img).to(device).unsqueeze(0).mul(2).sub(1))
-                      embed = clip_model.encode_image(normalize(batch)).float()
-                      if fuzzy_prompt:
-                          for i in range(25):
-                              model_stat["target_embeds"].append((embed + torch.randn(embed.shape, device=device, dtype=embed.dtype) * rand_mag).clamp(0,1))
-                              weights.extend([weight / cutn] * cutn)
-                      else:
-                          model_stat["target_embeds"].append(embed)
-                          model_stat["weights"].extend([weight / cutn] * cutn)
+            if image_prompt:
+                model_stat["make_cutouts"] = MakeCutouts(
+                    clip_model.visual.input_resolution,
+                    cutn,
+                    skip_augs=skip_augs,
+                )
+                for prompt in image_prompt:
+                    path, weight = parse_prompt(prompt)
+                    img = Image.open(fetch(path)).convert('RGB')
+                    img = TF.resize(img, min(side_x, side_y, *img.size), T.InterpolationMode.LANCZOS)
+                    batch = model_stat["make_cutouts"](TF.to_tensor(img).to(device).unsqueeze(0).mul(2).sub(1))
+                    embed = clip_model.encode_image(normalize(batch)).float()
+                    if args.fuzzy_prompt:
+                        for _ in range(25):
+                            model_stat["target_embeds"].append(
+                                (embed + torch.randn(embed.shape, device=device, dtype=embed.dtype) * args.rand_mag).clamp(0, 1)
+                            )
+                            model_stat["weights"].extend([weight / cutn] * cutn)
+                    else:
+                        model_stat["target_embeds"].append(embed)
+                        model_stat["weights"].extend([weight / cutn] * cutn)
 
-                model_stat["target_embeds"] = torch.cat(model_stat["target_embeds"])
-                model_stat["weights"] = torch.tensor(model_stat["weights"], device=device)
-                if model_stat["weights"].sum().abs() < 1e-3:
-                    raise RuntimeError('The weights must not sum to 0.')
-                model_stat["weights"] /= model_stat["weights"].sum().abs()
-                model_stats.append(model_stat)
+            model_stat["target_embeds"] = torch.cat(model_stat["target_embeds"])
+            model_stat["weights"] = torch.tensor(model_stat["weights"], device=device)
+            if model_stat["weights"].sum().abs() < 1e-3:
+                raise RuntimeError('The weights must not sum to 0.')
+            model_stat["weights"] /= model_stat["weights"].sum().abs()
+            model_stats.append(model_stat)
 
           init = None
           init_pil = None
@@ -621,15 +631,26 @@ def main(cli_overrides: dict | None = None) -> None:
                           # More conservative default than skip/steps to reduce inter-frame drift.
                           ratio = float(skip_steps) / max(float(args.steps), 1.0)
                           strength = max(0.05, min(0.95, ratio * 0.65))
+                      if latent_novelty_strength:
+                          run_progress = _smoothstep(frame_num / float(max(args.max_frames - 1, 1)))
+                          strength = max(0.05, min(0.95, strength + float(latent_novelty_strength) * run_progress))
+                      if latent_color_reset:
+                          color_reset = max(0.0, min(0.85, float(latent_color_reset) * (0.35 + 0.65 * _smoothstep(frame_num / float(max(args.max_frames - 1, 1))))))
+                      else:
+                          color_reset = 0.0
                       image = latent_backend.generate(
                           init_image=init_pil,
                           strength_or_skip=strength,
                           steps=args.steps,
                           guidance_scale=clip_guidance_scale,
-                          extra_guidance_state={"prompt_state": prompt_state},
+                          extra_guidance_state={
+                              "prompt_state": prompt_state,
+                              "latent_color_reset": color_reset,
+                          },
                       )
                       if frame_num > 0 and init_pil is not None and latent_temporal_blend > 0:
                           keep = max(0.0, min(1.0, float(latent_temporal_blend)))
+                          keep *= max(0.0, (1.0 - run_progress) ** 3)
                           image = Image.blend(image, init_pil, keep)
                   image.save(progress_path)
                   if frame_num == 0:
@@ -792,6 +813,8 @@ def main(cli_overrides: dict | None = None) -> None:
           'latent_first_frame_strategy': latent_first_frame_strategy,
           'latent_strength': latent_strength,
                     'latent_temporal_blend': latent_temporal_blend,
+                    'latent_novelty_strength': latent_novelty_strength,
+                    'latent_color_reset': latent_color_reset,
         }
         with open(f"{batchFolder}/{batch_name}({batchNum})_settings.txt", "w+", encoding="utf-8") as f:   #save settings
             json.dump(setting_list, f, ensure_ascii=False, indent=4)
@@ -1156,6 +1179,7 @@ def main(cli_overrides: dict | None = None) -> None:
         nonlocal rotation_3d_x, rotation_3d_y, rotation_3d_z, near_plane, far_plane, fov
         nonlocal padding_mode, sampling_mode
         nonlocal depth_backend, latent_first_frame_strategy, latent_strength, latent_temporal_blend
+        nonlocal latent_novelty_strength, latent_color_reset
         nonlocal turbo_mode, turbo_steps, turbo_preroll, frames_scale, frames_skip_steps
         nonlocal zoom
 
@@ -1241,6 +1265,10 @@ def main(cli_overrides: dict | None = None) -> None:
             latent_strength = ov["latent_strength"]
         if "latent_temporal_blend" in ov:
             latent_temporal_blend = ov["latent_temporal_blend"]
+        if "latent_novelty_strength" in ov:
+            latent_novelty_strength = ov["latent_novelty_strength"]
+        if "latent_color_reset" in ov:
+            latent_color_reset = ov["latent_color_reset"]
         if "turbo_mode" in ov:
             turbo_mode = ov["turbo_mode"]
         if "turbo_steps" in ov:

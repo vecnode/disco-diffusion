@@ -78,6 +78,8 @@ _DIRECT_KEYS: tuple[str, ...] = (
     "use_vertical_symmetry",
     "use_horizontal_symmetry",
     "transformation_percent",
+    "latent_novelty_strength",
+    "latent_color_reset",
 )
 
 

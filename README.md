@@ -25,6 +25,8 @@ uv run python -m discodiff.main
 #   --latent-first-frame txt2img|black
 #   --latent-strength 0.25            # lower = more temporal coherence
 #   --latent-temporal-blend 0.20      # blend warped prev frame into output
+#   --latent-novelty-strength 0.03     # slowly increases novelty over time
+#   --latent-color-reset 0.06          # suppress saturation drift over long runs
 #   DISCO_MARIGOLD_MODEL=prs-eth/marigold-depth-lcm-v1-0
 #   DISCO_MARIGOLD_MODEL_DIR=/absolute/path/to/local/marigold
 #   DISCO_MARIGOLD_DEPTH_CONTRAST=1.35  # increase perceived depth parallax
@@ -33,7 +35,8 @@ uv run python -m discodiff.main
 uv run disco.py --generation-mode 3D_latent --turbo-mode --width 1024 --height 576 \
   --max-frames 120 --set-seed 42 --steps 100 \
   --depth-backend marigold --latent-first-frame txt2img \
-  --latent-strength 0.25 --latent-temporal-blend 0.20 \
+  --latent-strength 0.5 --latent-temporal-blend 0.35 \
+  --latent-novelty-strength 0.03 --latent-color-reset 0.06 \
   --text-prompts-json /dev/stdin \
   <<'EOF'
 {"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"], "40": ["the sea, volumetric light, wide angle"]}
@@ -101,5 +104,5 @@ Setting | Env var | Default | Notes
 `output_dir` | `DISCO_OUTPUT_DIR` | `<repo>/output` | Output root for generated assets.
 `device` | `DISCO_DEVICE` | `auto` | Selects runtime device (`auto`, `rtx`, `cpu`, `cuda`, `cuda:N`, `mps`).
 `seed` | `DISCO_SEED` | `None` | Optional integer; runtime still supports random seed behavior.
-`generation_mode` | `DISCO_GENERATION_MODE` | `None` | One of `None`, `2D`, `3D`, `3D_latent`, `Video Input`.
+`generation_mode` | `DISCO_GENERATION_MODE` | `None` | One of `None`, `2D`, `3D`, `3D_latent`.
 `profile` | `DISCO_PROFILE` | `default` | Backend defaults profile (`default`, `rtx`, `rtx-safe`, `rtx-fast`).
