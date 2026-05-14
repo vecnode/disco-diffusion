@@ -2,6 +2,8 @@
 
 Under heavy development. 
 
+3D warp state management + latent img2img generation per frame.
+
 Specific support for RTX Ampere, tests under 24Gb.
 
 ## Reproduce
@@ -20,18 +22,6 @@ uv run python -m discodiff.main
 
 # Latent
 
-# Optional overrides:
-#   --depth-backend marigold|adabins
-#   --latent-first-frame txt2img|black
-#   --latent-strength 0.25            # lower = more temporal coherence
-#   --latent-temporal-blend 0.20      # blend warped prev frame into output
-#   --latent-novelty-strength 0.03     # slowly increases novelty over time
-#   --latent-color-reset 0.06          # suppress saturation drift over long runs
-#   DISCO_MARIGOLD_MODEL=prs-eth/marigold-depth-lcm-v1-0
-#   DISCO_MARIGOLD_MODEL_DIR=/absolute/path/to/local/marigold
-#   DISCO_MARIGOLD_DEPTH_CONTRAST=1.35  # increase perceived depth parallax
-#   DISCO_MARIGOLD_INVERT_DEPTH=0       # set to 1 only if scene depth is reversed
-
 uv run disco.py --width 1024 --height 576 \
   --max-frames 120 --set-seed 42 --steps 100 \
   --latent-first-frame txt2img \
@@ -39,7 +29,7 @@ uv run disco.py --width 1024 --height 576 \
   --latent-novelty-strength 0.03 --latent-color-reset 0.06 \
   --text-prompts-json /dev/stdin \
   <<'EOF'
-{"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"], "40": ["the sea, volumetric light, wide angle"]}
+{"0": ["a person in the city, dusk fog, volumetric light, wide angle"], "40": ["a person in the sea, volumetric light, wide angle"]}
 EOF
 
 # Make video
