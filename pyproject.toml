@@ -1,16 +1,19 @@
 [project]
 name = "disco-diffusion"
 version = "0.1.0"
-description = "Modern refactor of Disco Diffusion"
+description = "Disco Diffusion"
 readme = "README.md"
 requires-python = ">=3.9,<3.13"
 dependencies = [
+  "accelerate",
+  "diffusers",
   "einops",
   "ftfy",
   "imageio",
   "imageio-ffmpeg==0.4.4",
   "ipywidgets",
   "lpips",
+  "matplotlib",
   "numpy",
   "omegaconf",
   "opencv-python",
@@ -19,10 +22,12 @@ dependencies = [
   "pytorch-lightning",
   "regex",
   "requests",
+  "safetensors",
   "timm",
   "torch",
   "torch-fidelity",
   "torchvision",
+  "transformers",
   "tqdm",
 ]
 

@@ -89,7 +89,7 @@ def main(cli_overrides: dict | None = None) -> None:
     init_scale = 1000
     skip_steps = 10
 
-    GENERATION_MODE = run_config.generation_mode  # Literal: "None" | "2D" | "3D" | "Video Input"
+    GENERATION_MODE = run_config.generation_mode  # Literal: "None" | "2D" | "3D" | "3D_latent" | "Video Input"
 
     video_init_path = "init.mp4"
     extract_nth_frame = 2
@@ -173,7 +173,7 @@ def main(cli_overrides: dict | None = None) -> None:
     from .guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
     from .guidance.clip_cuts import MakeCutouts, MakeCutoutsDango, range_loss, spherical_dist_loss, tv_loss
-    from .diffusion import iter_clip_guided_samples, timestep_after_skip
+    from .diffusion import GuidedDiffusionBackend, LatentDiffusionBackend, timestep_after_skip
 
     # Package helpers (geometry.warp, config.keyframes) — no upstream clone.
     sys.path.append(PROJECT_DIR)
@@ -246,7 +246,13 @@ def main(cli_overrides: dict | None = None) -> None:
                         "AdaBins_nyu.pt missing after download failure; see warning above or set USE_ADABINS = False."
                     )
             sys.path.append(f'{PROJECT_DIR}/AdaBins')
-        from infer import InferenceHelper
+        try:
+            from infer import InferenceHelper
+        except ModuleNotFoundError as exc:
+            raise RuntimeError(
+                "AdaBins requires additional Python packages that are not installed "
+                f"(missing: {exc.name}). Run `uv sync` and retry."
+            ) from exc
         MAX_ADABINS_AREA = 500000
 
     from .platform.device import apply_backend_defaults, log_device_selection, resolve_runtime_device
@@ -355,9 +361,9 @@ def main(cli_overrides: dict | None = None) -> None:
       print(range(args.start_frame, args.max_frames))
 
       adabins_helper = None
-      if args.animation_mode == "3D":
+      if args.animation_mode in ("3D", "3D_latent"):
           adabins_helper = init_adabins_depth_helper()
-      if args.animation_mode == "3D" and turbo_mode:
+      if args.animation_mode in ("3D", "3D_latent") and turbo_mode:
           print(
               f"[turbo] steps={args.steps} turbo_steps={int(turbo_steps)} "
               f"frames_skip_steps={frames_skip_steps} calc_skip_steps={args.calc_frames_skip_steps} "
@@ -423,7 +429,7 @@ def main(cli_overrides: dict | None = None) -> None:
               init_scale = args.frames_scale
               skip_steps = args.calc_frames_skip_steps
 
-          if args.animation_mode == "3D":
+          if args.animation_mode in ("3D", "3D_latent"):
                         if frame_num > 0:
                             seed += 1
                             if resume_run and frame_num == start_frame:
@@ -445,7 +451,11 @@ def main(cli_overrides: dict | None = None) -> None:
                                         # Bootstrap turbo old-frame state if missing (fresh run / resumed run without cache).
                                         next_step_pil.save(old_frame_scaled_path)
                                     # set up 2 warped image sequences, old & new, to blend toward new diff image
-                                    old_frame = do_3d_step(old_frame_scaled_path, frame_num, adabins_helper)
+                                    if args.animation_mode == "3D_latent":
+                                        # Reuse the newly warped frame in latent mode to avoid a second AdaBins+reprojection pass.
+                                        old_frame = next_step_pil
+                                    else:
+                                        old_frame = do_3d_step(old_frame_scaled_path, frame_num, adabins_helper)
                                     old_frame.save(old_frame_scaled_path)
                                     if frame_num % int(turbo_steps) != 0:
                                         print('turbo skip this frame: skipping clip diffusion steps')
@@ -581,12 +591,16 @@ def main(cli_overrides: dict | None = None) -> None:
                 model_stats.append(model_stat)
 
           init = None
+          init_pil = None
           if init_image is not None:
-              init = Image.open(fetch(init_image)).convert('RGB')
-              init = init.resize((args.side_x, args.side_y), Image.LANCZOS)
-              init = TF.to_tensor(init).to(device).unsqueeze(0).mul(2).sub(1)
+              init_pil = Image.open(fetch(init_image)).convert('RGB')
+              init_pil = init_pil.resize((args.side_x, args.side_y), Image.LANCZOS)
+              if args.animation_mode != "3D_latent":
+                  init = TF.to_tensor(init_pil).to(device).unsqueeze(0).mul(2).sub(1)
+          elif args.animation_mode == "3D_latent":
+              init_pil = Image.new("RGB", (args.side_x, args.side_y), color=(0, 0, 0))
 
-          if args.perlin_init:
+          if args.perlin_init and args.animation_mode != "3D_latent":
               if args.perlin_mode == 'color':
                   init = _noise.create_perlin_noise([1.5**-i*0.5 for i in range(12)], 1, 1, False, side_x, side_y, device)
                   init2 = _noise.create_perlin_noise([1.5**-i*0.5 for i in range(8)], 4, 4, False, side_x, side_y, device)
@@ -677,27 +691,50 @@ def main(cli_overrides: dict | None = None) -> None:
               print('')
               gc.collect()
               torch.cuda.empty_cache()
-              cur_t = timestep_after_skip(diffusion, skip_steps)
-              total_steps = cur_t
+              is_latent_backend = args.animation_mode == "3D_latent"
+              if is_latent_backend:
+                  cur_t = -1
+                  total_steps = 1
+              else:
+                  cur_t = timestep_after_skip(diffusion, skip_steps)
+                  total_steps = cur_t
 
-              if perlin_init:
+              if perlin_init and not is_latent_backend:
                   init = _noise.regen_perlin(perlin_mode, side_x, side_y, device, batch_size)
 
-              samples = iter_clip_guided_samples(
-                  diffusion_sampling_mode=args.diffusion_sampling_mode,
-                  diffusion=diffusion,
-                  model=model,
-                  batch_size=batch_size,
-                  side_y=args.side_y,
-                  side_x=args.side_x,
-                  clip_denoised=clip_denoised,
-                  cond_fn=cond_fn,
-                  skip_timesteps=skip_steps,
+              if is_latent_backend:
+                  save_num = f'{frame_num:04}' if GENERATION_MODE != "None" else i
+                  filename = f'{args.batch_name}({args.batchNum})_{save_num}.png'
+                  prompt_state = latent_backend.prepare(frame_prompt, seed, (args.side_x, args.side_y))
+                  strength = float(skip_steps) / max(float(args.steps), 1.0)
+                  image = latent_backend.generate(
+                      init_image=init_pil,
+                      strength_or_skip=strength,
+                      steps=args.steps,
+                      guidance_scale=clip_guidance_scale,
+                      extra_guidance_state={"prompt_state": prompt_state},
+                  )
+                  image.save(progress_path)
+                  if frame_num == 0:
+                      save_settings()
+                  if args.animation_mode != "None":
+                      image.save(prev_frame_path)
+                  image.save(f'{batchFolder}/{filename}')
+                  if args.animation_mode in ("3D", "3D_latent"):
+                      if turbo_mode and frame_num > 0:
+                          blend_factor = 1.0 / int(turbo_steps)
+                          newFrame = cv2.imread(prev_frame_path)
+                          prev_frame_warped = cv2.imread(prev_frame_scaled_path)
+                          blendedImage = cv2.addWeighted(newFrame, blend_factor, prev_frame_warped, (1-blend_factor), 0.0)
+                          cv2.imwrite(f'{batchFolder}/{filename}', blendedImage)
+                  continue
+
+              samples = guided_backend.generate(
                   init_image=init,
-                  randomize_class=randomize_class,
-                  eta=eta,
-                  symmetry_transformation_fn=symmetry_transformation_fn,
-                  transformation_percent=args.transformation_percent,
+                  strength_or_skip=skip_steps,
+                  steps=args.steps,
+                  guidance_scale=clip_guidance_scale,
+                  extra_guidance_state={"cond_fn": cond_fn},
               )
 
 
@@ -748,7 +785,7 @@ def main(cli_overrides: dict | None = None) -> None:
                             if args.animation_mode != "None":
                               image.save(prev_frame_path)
                             image.save(f'{batchFolder}/{filename}')
-                            if args.animation_mode == "3D":
+                            if args.animation_mode in ("3D", "3D_latent"):
                                 # Match notebook behavior: blend only for the saved output frame,
                                 # but keep prev_frame_path as the newly diffused frame.
                                 if turbo_mode and frame_num > 0:
@@ -1195,22 +1232,80 @@ def main(cli_overrides: dict | None = None) -> None:
     prev_frame_scaled_path = f"{runtimeFolder}/prevFrameScaled.png"
     old_frame_scaled_path = f"{runtimeFolder}/oldFrameScaled.png"
 
-    def _apply_pre_animation_cli_overrides(ov: dict | None) -> None:
-        nonlocal GENERATION_MODE, max_frames, width_height, side_x, side_y
+    # Note: If using a pixelart diffusion model, try adding "#pixelart" to the end of the prompt for a stronger effect.
+    text_prompts = {
+        0: ["A beautiful painting of a singular lighthouse, shining its light across a tumultuous sea of blood by greg rutkowski and thomas kinkade, Trending on artstation.", "yellow color scheme"],
+        100: ["This set of prompts start at frame 100", "This prompt has weight five:5"],
+    }
+
+    image_prompts = {
+        # 0:['ImagePromptsWorkButArentVeryGood.png:2',],
+    }
+
+    def _apply_cli_overrides(ov: dict | None) -> None:
+        nonlocal clip_guidance_scale, tv_scale, range_scale, sat_scale, cutn, cutn_batches
+        nonlocal init_image, init_scale, skip_steps, perlin_init, perlin_mode
+        nonlocal skip_augs, randomize_class, clip_denoised, clamp_grad, clamp_max, set_seed
+        nonlocal fuzzy_prompt, rand_mag, eta, use_vertical_symmetry, use_horizontal_symmetry
+        nonlocal transformation_percent, video_init_flow_warp, video_init_flow_blend
+        nonlocal video_init_check_consistency, text_prompts, image_prompts
+        nonlocal width_height, side_x, side_y, steps, GENERATION_MODE, max_frames
         nonlocal translation_x, translation_y, translation_z
-        nonlocal rotation_3d_x, rotation_3d_y, rotation_3d_z, fov
-        nonlocal zoom, frames_scale, frames_skip_steps, turbo_mode, turbo_steps
-
-        if ov and "GENERATION_MODE" in ov:
-            GENERATION_MODE = ov["GENERATION_MODE"]
-
-        if GENERATION_MODE == "3D":
-            zoom = "0: (1)"
-            translation_z = "0: (1.5)"
+        nonlocal rotation_3d_x, rotation_3d_y, rotation_3d_z, near_plane, far_plane, fov
+        nonlocal padding_mode, sampling_mode
+        nonlocal turbo_mode, turbo_steps, turbo_preroll, frames_scale, frames_skip_steps
+        nonlocal video_init_frames_scale, video_init_frames_skip_steps, zoom
 
         if not ov:
+            if GENERATION_MODE in ("3D", "3D_latent"):
+                zoom = "0: (1)"
+                translation_z = "0: (1.5)"
             return
 
+        if "GENERATION_MODE" in ov:
+            GENERATION_MODE = ov["GENERATION_MODE"]
+        if "clip_guidance_scale" in ov:
+            clip_guidance_scale = ov["clip_guidance_scale"]
+        if "tv_scale" in ov:
+            tv_scale = ov["tv_scale"]
+        if "range_scale" in ov:
+            range_scale = ov["range_scale"]
+        if "sat_scale" in ov:
+            sat_scale = ov["sat_scale"]
+        if "cutn" in ov:
+            cutn = ov["cutn"]
+        if "cutn_batches" in ov:
+            cutn_batches = ov["cutn_batches"]
+        if "init_image" in ov:
+            init_image = ov["init_image"]
+        if "init_scale" in ov:
+            init_scale = ov["init_scale"]
+        if "skip_steps" in ov:
+            skip_steps = ov["skip_steps"]
+        if "steps" in ov:
+            steps = ov["steps"]
+        if "perlin_init" in ov:
+            perlin_init = ov["perlin_init"]
+        if "perlin_mode" in ov:
+            perlin_mode = ov["perlin_mode"]
+        if "skip_augs" in ov:
+            skip_augs = ov["skip_augs"]
+        if "randomize_class" in ov:
+            randomize_class = ov["randomize_class"]
+        if "clip_denoised" in ov:
+            clip_denoised = ov["clip_denoised"]
+        if "clamp_grad" in ov:
+            clamp_grad = ov["clamp_grad"]
+        if "clamp_max" in ov:
+            clamp_max = ov["clamp_max"]
+        if "set_seed" in ov:
+            set_seed = ov["set_seed"]
+        if "fuzzy_prompt" in ov:
+            fuzzy_prompt = ov["fuzzy_prompt"]
+        if "rand_mag" in ov:
+            rand_mag = ov["rand_mag"]
+        if "eta" in ov:
+            eta = ov["eta"]
         if "max_frames" in ov:
             max_frames = ov["max_frames"]
         if "translation_x" in ov:
@@ -1225,16 +1320,46 @@ def main(cli_overrides: dict | None = None) -> None:
             rotation_3d_y = ov["rotation_3d_y"]
         if "rotation_3d_z" in ov:
             rotation_3d_z = ov["rotation_3d_z"]
+        if "near_plane" in ov:
+            near_plane = ov["near_plane"]
+        if "far_plane" in ov:
+            far_plane = ov["far_plane"]
         if "fov" in ov:
             fov = ov["fov"]
+        if "padding_mode" in ov:
+            padding_mode = ov["padding_mode"]
+        if "sampling_mode" in ov:
+            sampling_mode = ov["sampling_mode"]
         if "turbo_mode" in ov:
             turbo_mode = ov["turbo_mode"]
         if "turbo_steps" in ov:
             turbo_steps = ov["turbo_steps"]
+        if "turbo_preroll" in ov:
+            turbo_preroll = ov["turbo_preroll"]
         if "frames_scale" in ov:
             frames_scale = ov["frames_scale"]
         if "frames_skip_steps" in ov:
             frames_skip_steps = ov["frames_skip_steps"]
+        if "video_init_frames_scale" in ov:
+            video_init_frames_scale = ov["video_init_frames_scale"]
+        if "video_init_frames_skip_steps" in ov:
+            video_init_frames_skip_steps = ov["video_init_frames_skip_steps"]
+        if "use_vertical_symmetry" in ov:
+            use_vertical_symmetry = ov["use_vertical_symmetry"]
+        if "use_horizontal_symmetry" in ov:
+            use_horizontal_symmetry = ov["use_horizontal_symmetry"]
+        if "transformation_percent" in ov:
+            transformation_percent = ov["transformation_percent"]
+        if "video_init_flow_warp" in ov:
+            video_init_flow_warp = ov["video_init_flow_warp"]
+        if "video_init_flow_blend" in ov:
+            video_init_flow_blend = ov["video_init_flow_blend"]
+        if "video_init_check_consistency" in ov:
+            video_init_check_consistency = ov["video_init_check_consistency"]
+        if "text_prompts" in ov:
+            text_prompts = ov["text_prompts"]
+        if "image_prompts" in ov:
+            image_prompts = ov["image_prompts"]
         if "width_height" in ov:
             width_height = [ov["width_height"][0], ov["width_height"][1]]
             side_x = (width_height[0] // 64) * 64
@@ -1244,7 +1369,11 @@ def main(cli_overrides: dict | None = None) -> None:
                     f"Changing output size to {side_x}x{side_y}. Dimensions must be multiples of 64."
                 )
 
-    _apply_pre_animation_cli_overrides(cli_overrides)
+        if GENERATION_MODE in ("3D", "3D_latent"):
+            zoom = "0: (1)"
+            translation_z = "0: (1.5)"
+
+    _apply_cli_overrides(cli_overrides)
 
 
 
@@ -1283,7 +1412,7 @@ def main(cli_overrides: dict | None = None) -> None:
         max_frames = len(glob(f'{videoFramesFolder}/*.jpg'))
 
     # Insist that turbo be used only with 3D anim.
-    if turbo_mode and GENERATION_MODE != '3D':
+    if turbo_mode and GENERATION_MODE not in ('3D', '3D_latent'):
         print('Turbo mode only available with 3D animations. Disabling Turbo.')
         turbo_mode = False
 
@@ -1701,149 +1830,12 @@ def main(cli_overrides: dict | None = None) -> None:
     When GENERATION_MODE is "None", only the first prompt set is used. For "2D" or video modes, prompts advance per frame and hold on the last defined frame.
     """
 
-
-    # Note: If using a pixelart diffusion model, try adding "#pixelart" to the end of the prompt for a stronger effect. It'll tend to work a lot better!
-    text_prompts = {
-        0: ["A beautiful painting of a singular lighthouse, shining its light across a tumultuous sea of blood by greg rutkowski and thomas kinkade, Trending on artstation.", "yellow color scheme"],
-        100: ["This set of prompts start at frame 100", "This prompt has weight five:5"],
-    }
-
-    image_prompts = {
-        # 0:['ImagePromptsWorkButArentVeryGood.png:2',],
-    }
-
-
-
     """
     # 4. Diffuse!
     """
 
     # Do the Run!
     # `n_batches` ignored with animation modes.
-
-    def _apply_cli_overrides(ov: dict | None) -> None:
-        nonlocal clip_guidance_scale, tv_scale, range_scale, sat_scale, cutn, cutn_batches
-        nonlocal init_image, init_scale, skip_steps, perlin_init, perlin_mode
-        nonlocal skip_augs, randomize_class, clip_denoised, clamp_grad, clamp_max, set_seed
-        nonlocal fuzzy_prompt, rand_mag, eta, use_vertical_symmetry, use_horizontal_symmetry
-        nonlocal transformation_percent, video_init_flow_warp, video_init_flow_blend
-        nonlocal video_init_check_consistency, text_prompts, image_prompts
-        nonlocal width_height, side_x, side_y, steps, GENERATION_MODE, max_frames
-        nonlocal translation_x, translation_y, translation_z
-        nonlocal rotation_3d_x, rotation_3d_y, rotation_3d_z, near_plane, far_plane, fov
-        nonlocal padding_mode, sampling_mode
-        nonlocal turbo_mode, turbo_steps, turbo_preroll, frames_scale, frames_skip_steps
-        nonlocal video_init_frames_scale, video_init_frames_skip_steps
-        if not ov:
-            return
-        if "GENERATION_MODE" in ov:
-            GENERATION_MODE = ov["GENERATION_MODE"]
-        if "clip_guidance_scale" in ov:
-            clip_guidance_scale = ov["clip_guidance_scale"]
-        if "tv_scale" in ov:
-            tv_scale = ov["tv_scale"]
-        if "range_scale" in ov:
-            range_scale = ov["range_scale"]
-        if "sat_scale" in ov:
-            sat_scale = ov["sat_scale"]
-        if "cutn" in ov:
-            cutn = ov["cutn"]
-        if "cutn_batches" in ov:
-            cutn_batches = ov["cutn_batches"]
-        if "init_image" in ov:
-            init_image = ov["init_image"]
-        if "init_scale" in ov:
-            init_scale = ov["init_scale"]
-        if "skip_steps" in ov:
-            skip_steps = ov["skip_steps"]
-        if "steps" in ov:
-            steps = ov["steps"]
-        if "perlin_init" in ov:
-            perlin_init = ov["perlin_init"]
-        if "perlin_mode" in ov:
-            perlin_mode = ov["perlin_mode"]
-        if "skip_augs" in ov:
-            skip_augs = ov["skip_augs"]
-        if "randomize_class" in ov:
-            randomize_class = ov["randomize_class"]
-        if "clip_denoised" in ov:
-            clip_denoised = ov["clip_denoised"]
-        if "clamp_grad" in ov:
-            clamp_grad = ov["clamp_grad"]
-        if "clamp_max" in ov:
-            clamp_max = ov["clamp_max"]
-        if "set_seed" in ov:
-            set_seed = ov["set_seed"]
-        if "fuzzy_prompt" in ov:
-            fuzzy_prompt = ov["fuzzy_prompt"]
-        if "rand_mag" in ov:
-            rand_mag = ov["rand_mag"]
-        if "eta" in ov:
-            eta = ov["eta"]
-        if "max_frames" in ov:
-            max_frames = ov["max_frames"]
-        if "translation_x" in ov:
-            translation_x = ov["translation_x"]
-        if "translation_y" in ov:
-            translation_y = ov["translation_y"]
-        if "translation_z" in ov:
-            translation_z = ov["translation_z"]
-        if "rotation_3d_x" in ov:
-            rotation_3d_x = ov["rotation_3d_x"]
-        if "rotation_3d_y" in ov:
-            rotation_3d_y = ov["rotation_3d_y"]
-        if "rotation_3d_z" in ov:
-            rotation_3d_z = ov["rotation_3d_z"]
-        if "near_plane" in ov:
-            near_plane = ov["near_plane"]
-        if "far_plane" in ov:
-            far_plane = ov["far_plane"]
-        if "fov" in ov:
-            fov = ov["fov"]
-        if "padding_mode" in ov:
-            padding_mode = ov["padding_mode"]
-        if "sampling_mode" in ov:
-            sampling_mode = ov["sampling_mode"]
-        if "turbo_mode" in ov:
-            turbo_mode = ov["turbo_mode"]
-        if "turbo_steps" in ov:
-            turbo_steps = ov["turbo_steps"]
-        if "turbo_preroll" in ov:
-            turbo_preroll = ov["turbo_preroll"]
-        if "frames_scale" in ov:
-            frames_scale = ov["frames_scale"]
-        if "frames_skip_steps" in ov:
-            frames_skip_steps = ov["frames_skip_steps"]
-        if "video_init_frames_scale" in ov:
-            video_init_frames_scale = ov["video_init_frames_scale"]
-        if "video_init_frames_skip_steps" in ov:
-            video_init_frames_skip_steps = ov["video_init_frames_skip_steps"]
-        if "use_vertical_symmetry" in ov:
-            use_vertical_symmetry = ov["use_vertical_symmetry"]
-        if "use_horizontal_symmetry" in ov:
-            use_horizontal_symmetry = ov["use_horizontal_symmetry"]
-        if "transformation_percent" in ov:
-            transformation_percent = ov["transformation_percent"]
-        if "video_init_flow_warp" in ov:
-            video_init_flow_warp = ov["video_init_flow_warp"]
-        if "video_init_flow_blend" in ov:
-            video_init_flow_blend = ov["video_init_flow_blend"]
-        if "video_init_check_consistency" in ov:
-            video_init_check_consistency = ov["video_init_check_consistency"]
-        if "text_prompts" in ov:
-            text_prompts = ov["text_prompts"]
-        if "image_prompts" in ov:
-            image_prompts = ov["image_prompts"]
-        if "width_height" in ov:
-            width_height = [ov["width_height"][0], ov["width_height"][1]]
-            side_x = (width_height[0] // 64) * 64
-            side_y = (width_height[1] // 64) * 64
-            if side_x != width_height[0] or side_y != width_height[1]:
-                print(
-                    f"Changing output size to {side_x}x{side_y}. Dimensions must be multiples of 64."
-                )
-
-    _apply_cli_overrides(cli_overrides)
 
     #Update Model Settings
     from .diffusion import load_primary_diffusion_model
@@ -1905,11 +1897,11 @@ def main(cli_overrides: dict | None = None) -> None:
             batchNum = int(run_to_resume)
         if resume_from_frame == 'latest':
             start_frame = len(glob(batchFolder+f"/{batch_name}({batchNum})_*.png"))
-            if GENERATION_MODE != '3D' and turbo_mode == True and start_frame > turbo_preroll and start_frame % int(turbo_steps) != 0:
+            if GENERATION_MODE not in ('3D', '3D_latent') and turbo_mode == True and start_frame > turbo_preroll and start_frame % int(turbo_steps) != 0:
                 start_frame = start_frame - (start_frame % int(turbo_steps))
         else:
             start_frame = int(resume_from_frame)+1
-            if GENERATION_MODE != '3D' and turbo_mode == True and start_frame > turbo_preroll and start_frame % int(turbo_steps) != 0:
+            if GENERATION_MODE not in ('3D', '3D_latent') and turbo_mode == True and start_frame > turbo_preroll and start_frame % int(turbo_steps) != 0:
                 start_frame = start_frame - (start_frame % int(turbo_steps))
             if retain_overwritten_frames is True:
                 existing_frames = len(glob(batchFolder+f"/{batch_name}({batchNum})_*.png"))
@@ -1959,6 +1951,22 @@ def main(cli_overrides: dict | None = None) -> None:
         create_model_and_diffusion=create_model_and_diffusion,
         get_model_filename=get_model_filename,
     )
+
+    guided_backend = GuidedDiffusionBackend(
+        diffusion_sampling_mode=diffusion_sampling_mode,
+        diffusion=diffusion,
+        model=model,
+        batch_size=batch_size,
+        side_y=side_y,
+        side_x=side_x,
+        clip_denoised=clip_denoised,
+        randomize_class=randomize_class,
+        eta=eta,
+        symmetry_transformation_fn=symmetry_transformation_fn,
+        transformation_percent=transformation_percent,
+    )
+    latent_backend = LatentDiffusionBackend(device=device)
+
     from . import main as _main_pub
 
     _main_pub.do_run = do_run
@@ -2060,7 +2068,7 @@ def main(cli_overrides: dict | None = None) -> None:
     )
 
     # Create per-channel 3D debug videos if the 3d folder exists and has frames
-    if GENERATION_MODE == "3D" and os.path.isdir(debug3dFolder):
+    if GENERATION_MODE in ("3D", "3D_latent") and os.path.isdir(debug3dFolder):
         _3d_channels = ["warped", "source", "depth_blended", "depth_midas", "depth_adabins", "flow_field"]
         for ch in _3d_channels:
             pattern = os.path.join(debug3dFolder, f"frame_%04d_{ch}.png")

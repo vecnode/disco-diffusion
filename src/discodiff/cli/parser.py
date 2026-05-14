@@ -140,7 +140,7 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         "--generation-mode",
         type=str,
         dest="generation_mode",
-        choices=("None", "2D", "3D", "Video Input"),
+        choices=("None", "2D", "3D", "3D_latent", "Video Input"),
         metavar="MODE",
         help='Pipeline mode (same as GENERATION_MODE in main.py). Overrides DISCO_GENERATION_MODE.',
     )
@@ -151,11 +151,23 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
     p.add_argument("--rotation-3d-x", type=str, dest="rotation_3d_x", metavar="KEYFRAMES")
     p.add_argument("--rotation-3d-y", type=str, dest="rotation_3d_y", metavar="KEYFRAMES")
     p.add_argument("--rotation-3d-z", type=str, dest="rotation_3d_z", metavar="KEYFRAMES")
+    p.add_argument("--near-plane", type=float, dest="near_plane")
+    p.add_argument("--far-plane", type=float, dest="far_plane")
     p.add_argument("--fov", type=float, dest="fov")
+    p.add_argument("--padding-mode", type=str, dest="padding_mode")
+    p.add_argument("--sampling-mode", type=str, dest="sampling_mode")
     p.add_argument("--turbo-mode", action=argparse.BooleanOptionalAction, dest="turbo_mode")
     p.add_argument("--turbo-steps", type=str, dest="turbo_steps", metavar="N")
+    p.add_argument("--turbo-preroll", type=_positive_int, dest="turbo_preroll", metavar="N")
     p.add_argument("--frames-scale", type=int, dest="frames_scale")
     p.add_argument("--frames-skip-steps", type=str, dest="frames_skip_steps", metavar="PERCENT")
+    p.add_argument("--video-init-frames-scale", type=int, dest="video_init_frames_scale")
+    p.add_argument(
+        "--video-init-frames-skip-steps",
+        type=str,
+        dest="video_init_frames_skip_steps",
+        metavar="PERCENT",
+    )
     p.add_argument(
         "--device",
         type=str,
@@ -194,11 +206,18 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
         "rotation_3d_x",
         "rotation_3d_y",
         "rotation_3d_z",
+        "near_plane",
+        "far_plane",
         "fov",
+        "padding_mode",
+        "sampling_mode",
         "turbo_mode",
         "turbo_steps",
+        "turbo_preroll",
         "frames_scale",
         "frames_skip_steps",
+        "video_init_frames_scale",
+        "video_init_frames_skip_steps",
         "video_init_flow_blend",
         "perlin_init",
         "skip_augs",

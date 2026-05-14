@@ -1,0 +1,174 @@
+"""Backend-agnostic diffusion interfaces for pixel and latent generation."""
+
+from __future__ import annotations
+
+import os
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any
+
+import torch
+from PIL import Image
+
+from .model import iter_clip_guided_samples
+
+
+@dataclass
+class BackendPromptState:
+    """Normalized prompt state consumed by backend generate()."""
+
+    prompt_text: str
+    seed: int | None
+    size: tuple[int, int]
+
+
+class DiffusionBackend(ABC):
+    """Common backend contract used by the animation loop."""
+
+    @abstractmethod
+    def prepare(self, prompt: list[str], seed: int | None, size: tuple[int, int]) -> BackendPromptState:
+        raise NotImplementedError
+
+    @abstractmethod
+    def generate(
+        self,
+        *,
+        init_image: Any,
+        strength_or_skip: float,
+        steps: int,
+        guidance_scale: float,
+        extra_guidance_state: dict[str, Any],
+    ) -> Any:
+        raise NotImplementedError
+
+
+class GuidedDiffusionBackend(DiffusionBackend):
+    """Compatibility backend that keeps the existing guided-diffusion behavior."""
+
+    def __init__(
+        self,
+        *,
+        diffusion_sampling_mode: str,
+        diffusion: Any,
+        model: Any,
+        batch_size: int,
+        side_y: int,
+        side_x: int,
+        clip_denoised: bool,
+        randomize_class: bool,
+        eta: float,
+        symmetry_transformation_fn: Any,
+        transformation_percent: Any,
+    ) -> None:
+        self.diffusion_sampling_mode = diffusion_sampling_mode
+        self.diffusion = diffusion
+        self.model = model
+        self.batch_size = batch_size
+        self.side_y = side_y
+        self.side_x = side_x
+        self.clip_denoised = clip_denoised
+        self.randomize_class = randomize_class
+        self.eta = eta
+        self.symmetry_transformation_fn = symmetry_transformation_fn
+        self.transformation_percent = transformation_percent
+
+    def prepare(self, prompt: list[str], seed: int | None, size: tuple[int, int]) -> BackendPromptState:
+        return BackendPromptState(prompt_text=" | ".join(prompt), seed=seed, size=size)
+
+    def generate(
+        self,
+        *,
+        init_image: Any,
+        strength_or_skip: float,
+        steps: int,
+        guidance_scale: float,
+        extra_guidance_state: dict[str, Any],
+    ) -> Any:
+        return iter_clip_guided_samples(
+            diffusion_sampling_mode=self.diffusion_sampling_mode,
+            diffusion=self.diffusion,
+            model=self.model,
+            batch_size=self.batch_size,
+            side_y=self.side_y,
+            side_x=self.side_x,
+            clip_denoised=self.clip_denoised,
+            cond_fn=extra_guidance_state["cond_fn"],
+            skip_timesteps=int(strength_or_skip),
+            init_image=init_image,
+            randomize_class=self.randomize_class,
+            eta=self.eta,
+            symmetry_transformation_fn=self.symmetry_transformation_fn,
+            transformation_percent=self.transformation_percent,
+        )
+
+
+class LatentDiffusionBackend(DiffusionBackend):
+    """Diffusers img2img backend used by 3D_latent mode."""
+
+    def __init__(self, *, device: torch.device, model_id: str | None = None) -> None:
+        self.device = device
+        self.model_id = model_id or os.environ.get("DISCO_LATENT_MODEL", "runwayml/stable-diffusion-v1-5")
+        self._pipe = None
+
+    def _ensure_pipe(self) -> None:
+        if self._pipe is not None:
+            return
+        try:
+            from diffusers import StableDiffusionImg2ImgPipeline
+        except Exception as exc:  # pragma: no cover - import behavior depends on environment
+            raise RuntimeError(
+                "3D_latent requires the diffusers stack. Install with: uv add diffusers transformers accelerate"
+            ) from exc
+
+        dtype = torch.float16 if self.device.type == "cuda" else torch.float32
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(self.model_id, torch_dtype=dtype)
+        pipe = pipe.to(self.device)
+        pipe.set_progress_bar_config(disable=True)
+        self._pipe = pipe
+
+    def prepare(self, prompt: list[str], seed: int | None, size: tuple[int, int]) -> BackendPromptState:
+        prompt_text = ", ".join([p.split(":", 1)[0] for p in prompt]) if prompt else ""
+        return BackendPromptState(prompt_text=prompt_text, seed=seed, size=size)
+
+    def generate(
+        self,
+        *,
+        init_image: Any,
+        strength_or_skip: float,
+        steps: int,
+        guidance_scale: float,
+        extra_guidance_state: dict[str, Any],
+    ) -> Image.Image:
+        self._ensure_pipe()
+
+        if not isinstance(init_image, Image.Image):
+            raise RuntimeError("3D_latent expects an init PIL image for img2img generation")
+
+        prompt_state: BackendPromptState = extra_guidance_state["prompt_state"]
+        if not prompt_state.prompt_text:
+            raise RuntimeError("3D_latent requires at least one text prompt")
+
+        strength = float(strength_or_skip)
+        if strength > 1.0:
+            strength = strength / max(float(steps), 1.0)
+        strength = max(0.05, min(0.95, strength))
+
+        # CLIP guidance scales in this repo are often large (hundreds/thousands).
+        cfg_scale = float(guidance_scale)
+        if cfg_scale > 30.0:
+            cfg_scale = cfg_scale / 100.0
+        cfg_scale = max(1.0, min(20.0, cfg_scale))
+
+        generator = None
+        if prompt_state.seed is not None:
+            generator = torch.Generator(device=self.device).manual_seed(int(prompt_state.seed))
+
+        result = self._pipe(
+            prompt=prompt_state.prompt_text,
+            image=init_image.resize(prompt_state.size, Image.LANCZOS),
+            strength=strength,
+            num_inference_steps=max(1, int(steps)),
+            guidance_scale=cfg_scale,
+            generator=generator,
+        )
+        return result.images[0]

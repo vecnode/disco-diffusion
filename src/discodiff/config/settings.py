@@ -11,7 +11,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
-_ALLOWED_GENERATION_MODES = {"None", "2D", "3D", "Video Input"}
+_ALLOWED_GENERATION_MODES = {"None", "2D", "3D", "3D_latent", "Video Input"}
 
 
 @dataclass(frozen=True)

@@ -70,6 +70,16 @@ uv run disco.py --generation-mode 3D --turbo-mode --width 1024 --height 576 \
 EOF
 
 
+# New latent backend mode (img2img over the same 3D warp/turbo world loop)
+# Requires: uv add diffusers transformers accelerate
+uv run disco.py --generation-mode 3D_latent --turbo-mode --width 1024 --height 576 \
+  --max-frames 120 --set-seed 42 --steps 100 \
+  --text-prompts-json /dev/stdin \
+  <<'EOF'
+{"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"], "40": ["the sea, volumetric light, wide angle"]}
+EOF
+
+
 ffmpeg -framerate 25 -pattern_type glob -i "./output/example/render/*.png" -c:v libx264 -preset slow -crf 12 -pix_fmt yuv444p -movflags +faststart "./output/example/render_25fps.mp4"
 
 
@@ -126,5 +136,5 @@ Setting | Env var | Default | Notes
 `output_dir` | `DISCO_OUTPUT_DIR` | `<repo>/output` | Output root for generated assets.
 `device` | `DISCO_DEVICE` | `auto` | Selects runtime device (`auto`, `rtx`, `cpu`, `cuda`, `cuda:N`, `mps`).
 `seed` | `DISCO_SEED` | `None` | Optional integer; runtime still supports random seed behavior.
-`generation_mode` | `DISCO_GENERATION_MODE` | `None` | One of `None`, `2D`, `3D`, `Video Input`.
+`generation_mode` | `DISCO_GENERATION_MODE` | `None` | One of `None`, `2D`, `3D`, `3D_latent`, `Video Input`.
 `profile` | `DISCO_PROFILE` | `default` | Backend defaults profile (`default`, `rtx`, `rtx-safe`, `rtx-fast`).
