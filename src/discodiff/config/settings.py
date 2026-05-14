@@ -11,7 +11,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
-_ALLOWED_GENERATION_MODES = {"None", "2D", "3D", "3D_latent"}
+_ALLOWED_GENERATION_MODES = {"3D_latent"}
 
 
 @dataclass(frozen=True)
@@ -21,7 +21,7 @@ class RunConfig:
     output_dir: Path
     device: str = "auto"
     seed: Optional[int] = None
-    generation_mode: str = "None"
+    generation_mode: str = "3D_latent"
     profile: str = "default"
     runtime_values: dict[str, Any] = field(default_factory=dict)
 
@@ -33,9 +33,9 @@ class RunConfig:
         device = os.environ.get("DISCO_DEVICE", "auto").strip() or "auto"
         profile = os.environ.get("DISCO_PROFILE", "default").strip() or "default"
 
-        generation_mode = os.environ.get("DISCO_GENERATION_MODE", "None").strip() or "None"
+        generation_mode = os.environ.get("DISCO_GENERATION_MODE", "3D_latent").strip() or "3D_latent"
         if generation_mode not in _ALLOWED_GENERATION_MODES:
-            generation_mode = "None"
+            generation_mode = "3D_latent"
 
         seed_raw = os.environ.get("DISCO_SEED", "").strip()
         seed: Optional[int] = None

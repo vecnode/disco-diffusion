@@ -1,4 +1,4 @@
-# disco-diffusion
+# mixed-diffusion
 
 Under heavy development. 
 
@@ -14,7 +14,7 @@ uv run disco.py
 uv run python -m discodiff.main
 ```
 
-## Text-to-video (3D)
+## Text-to-video (3D_latent)
 
 ```sh
 
@@ -32,35 +32,15 @@ uv run python -m discodiff.main
 #   DISCO_MARIGOLD_DEPTH_CONTRAST=1.35  # increase perceived depth parallax
 #   DISCO_MARIGOLD_INVERT_DEPTH=0       # set to 1 only if scene depth is reversed
 
-uv run disco.py --generation-mode 3D_latent --turbo-mode --width 1024 --height 576 \
+uv run disco.py --width 1024 --height 576 \
   --max-frames 120 --set-seed 42 --steps 100 \
-  --depth-backend marigold --latent-first-frame txt2img \
-  --latent-strength 0.5 --latent-temporal-blend 0.35 \
+  --latent-first-frame txt2img \
+  --latent-strength 0.5 --latent-temporal-blend 0.2 \
   --latent-novelty-strength 0.03 --latent-color-reset 0.06 \
   --text-prompts-json /dev/stdin \
   <<'EOF'
 {"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"], "40": ["the sea, volumetric light, wide angle"]}
 EOF
-
-
-# CLIP-guided
-
-uv run disco.py --generation-mode 3D --turbo-mode --width 1024 --height 576 \
-  --max-frames 120 --set-seed 42 --steps 100 \
-  --text-prompts-json /dev/stdin \
-  --image-prompts-json '{"0": [], "40": ["input/img1.jpeg:5"]}' \
-  <<'EOF'
-{"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"], "40": ["trees, volumetric light, wide angle"]}
-EOF
-
-
-uv run disco.py --generation-mode 3D --turbo-mode --width 1024 --height 576 \
-  --max-frames 120 --set-seed 42 --steps 100 \
-  --text-prompts-json /dev/stdin \
-  <<'EOF'
-{"0": ["cinematic coastal lighthouse, dusk fog, volumetric light, wide angle"], "40": ["the sea, volumetric light, wide angle"]}
-EOF
-
 
 # Make video
 
@@ -83,26 +63,3 @@ uv run disco.py --device rtx
 uv run disco.py --device cuda:0
 uv run disco.py --device cpu
 ```
-
-Optional runtime profile examples:
-
-```sh
-# Enables RTX-oriented backend defaults when compatible
-uv run disco.py --device auto --profile rtx
-```
-
-Env equivalents:
-- `DISCO_DEVICE` (`auto`, `rtx`, `cpu`, `cuda`, `cuda:N`, `mps`)
-- `DISCO_PROFILE` (`default`, `rtx`, `rtx-safe`, `rtx-fast`)
-
-## RunConfig
-
-Top-level runtime settings are now centralized in `RunConfig` at `src/discodiff/config/settings.py`.
-
-Setting | Env var | Default | Notes
---- | --- | --- | ---
-`output_dir` | `DISCO_OUTPUT_DIR` | `<repo>/output` | Output root for generated assets.
-`device` | `DISCO_DEVICE` | `auto` | Selects runtime device (`auto`, `rtx`, `cpu`, `cuda`, `cuda:N`, `mps`).
-`seed` | `DISCO_SEED` | `None` | Optional integer; runtime still supports random seed behavior.
-`generation_mode` | `DISCO_GENERATION_MODE` | `None` | One of `None`, `2D`, `3D`, `3D_latent`.
-`profile` | `DISCO_PROFILE` | `default` | Backend defaults profile (`default`, `rtx`, `rtx-safe`, `rtx-fast`).

@@ -116,8 +116,6 @@ class MakeCutoutsDango(nn.Module):
         InnerCrop=0,
         IC_Size_Pow=0.5,
         IC_Grey_P=0.2,
-        *,
-        animation_mode: str = "None",
         skip_augs=False,
     ):
         super().__init__()
@@ -127,43 +125,17 @@ class MakeCutoutsDango(nn.Module):
         self.IC_Size_Pow = IC_Size_Pow
         self.IC_Grey_P = IC_Grey_P
         self.skip_augs = skip_augs
-        if animation_mode == "None":
-            self.augs = T.Compose(
-                [
-                    T.RandomHorizontalFlip(p=0.5),
-                    T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                    T.RandomAffine(degrees=10, translate=(0.05, 0.05), interpolation=T.InterpolationMode.BILINEAR),
-                    T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                    T.RandomGrayscale(p=0.1),
-                    T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                    T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
-                ]
-            )
-        elif animation_mode == "Video Input":
-            self.augs = T.Compose(
-                [
-                    T.RandomHorizontalFlip(p=0.5),
-                    T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                    T.RandomAffine(degrees=15, translate=(0.1, 0.1)),
-                    T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                    T.RandomPerspective(distortion_scale=0.4, p=0.7),
-                    T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                    T.RandomGrayscale(p=0.15),
-                    T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                ]
-            )
-        elif animation_mode == "2D" or animation_mode == "3D":
-            self.augs = T.Compose(
-                [
-                    T.RandomHorizontalFlip(p=0.4),
-                    T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                    T.RandomAffine(degrees=10, translate=(0.05, 0.05), interpolation=T.InterpolationMode.BILINEAR),
-                    T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                    T.RandomGrayscale(p=0.1),
-                    T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
-                    T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.3),
-                ]
-            )
+        self.augs = T.Compose(
+            [
+                T.RandomHorizontalFlip(p=0.4),
+                T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
+                T.RandomAffine(degrees=10, translate=(0.05, 0.05), interpolation=T.InterpolationMode.BILINEAR),
+                T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
+                T.RandomGrayscale(p=0.1),
+                T.Lambda(lambda x: x + torch.randn_like(x) * 0.01),
+                T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.3),
+            ]
+        )
 
     def forward(self, input):
         cutouts = []
