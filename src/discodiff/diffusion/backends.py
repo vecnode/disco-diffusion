@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import os
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -105,10 +107,38 @@ class GuidedDiffusionBackend(DiffusionBackend):
 class LatentDiffusionBackend(DiffusionBackend):
     """Diffusers img2img backend used by 3D_latent mode."""
 
-    def __init__(self, *, device: torch.device, model_id: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        device: torch.device,
+        model_id: str | None = None,
+        models_root: str | None = None,
+    ) -> None:
         self.device = device
         self.model_id = model_id or os.environ.get("DISCO_LATENT_MODEL", "runwayml/stable-diffusion-v1-5")
+        self.models_root = Path(models_root or os.path.join(os.getcwd(), "models"))
+        self.local_model_dir = Path(
+            os.environ.get("DISCO_LATENT_MODEL_DIR", "").strip()
+            or self.models_root / "latent" / self._sanitize_repo_id(self.model_id)
+        )
         self._pipe = None
+
+    @staticmethod
+    def _sanitize_repo_id(repo_id: str) -> str:
+        return re.sub(r"[^a-zA-Z0-9._-]+", "_", repo_id)
+
+    def _download_to_local_dir(self) -> None:
+        self.local_model_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[3D_latent] Downloading model '{self.model_id}' to {self.local_model_dir}", flush=True)
+
+        try:
+            from huggingface_hub import snapshot_download
+
+            snapshot_download(repo_id=self.model_id, local_dir=str(self.local_model_dir), local_dir_use_symlinks=False)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to download latent model '{self.model_id}' into {self.local_model_dir}: {exc}"
+            ) from exc
 
     def _ensure_pipe(self) -> None:
         if self._pipe is not None:
@@ -121,7 +151,11 @@ class LatentDiffusionBackend(DiffusionBackend):
             ) from exc
 
         dtype = torch.float16 if self.device.type == "cuda" else torch.float32
-        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(self.model_id, torch_dtype=dtype)
+
+        if not (self.local_model_dir / "model_index.json").exists():
+            self._download_to_local_dir()
+
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(str(self.local_model_dir), torch_dtype=dtype)
         pipe = pipe.to(self.device)
         pipe.set_progress_bar_config(disable=True)
         self._pipe = pipe

@@ -1965,7 +1965,7 @@ def main(cli_overrides: dict | None = None) -> None:
         symmetry_transformation_fn=symmetry_transformation_fn,
         transformation_percent=transformation_percent,
     )
-    latent_backend = LatentDiffusionBackend(device=device)
+    latent_backend = LatentDiffusionBackend(device=device, models_root=model_path)
 
     from . import main as _main_pub
 

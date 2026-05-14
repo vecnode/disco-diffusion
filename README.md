@@ -72,6 +72,9 @@ EOF
 
 # New latent backend mode (img2img over the same 3D warp/turbo world loop)
 # Requires: uv add diffusers transformers accelerate
+# First run downloads to: ./models/latent/runwayml_stable-diffusion-v1-5/
+# Optional override: DISCO_LATENT_MODEL_DIR=/absolute/path/to/local/model
+
 uv run disco.py --generation-mode 3D_latent --turbo-mode --width 1024 --height 576 \
   --max-frames 120 --set-seed 42 --steps 100 \
   --text-prompts-json /dev/stdin \
