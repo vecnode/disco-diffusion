@@ -15,9 +15,7 @@ uv run main.py
 ## Text-to-video (3D_latent)
 
 ```sh
-
 # Latent
-
 uv run main.py --width 1024 --height 576 \
   --max-frames 120 --set-seed 42 --steps 100 \
   --latent-first-frame txt2img \
@@ -29,9 +27,7 @@ uv run main.py --width 1024 --height 576 \
 EOF
 
 # Make video
-
 ffmpeg -framerate 25 -pattern_type glob -i "./output/example/render/*.png" -c:v libx264 -preset slow -crf 12 -pix_fmt yuv444p -movflags +faststart "./output/example/render_25fps.mp4"
-
 ```
 
 ### Device Selection

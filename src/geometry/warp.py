@@ -39,8 +39,8 @@ def _save_3d_debug(debug_dir: str, frame_num: int, name: str, data) -> None:
         hsv[..., 2] = mag_norm.astype(np.uint8)
         cv2.imwrite(path, cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR))
 
-MAX_ADABINS_AREA = 500000
-MIN_ADABINS_AREA = 448*448
+MAX_IMAGE_AREA = 500000
+MIN_IMAGE_AREA = 448 * 448
 
 _DEPTH_EMA_CACHE = {}
 
@@ -85,11 +85,11 @@ def transform_image_3d(img_filepath, depth_backend, device, rot_mat=torch.eye(3)
         raise RuntimeError("Depth backend is not initialized")
 
     image_pil_area = w * h
-    if image_pil_area > MAX_ADABINS_AREA:
-        scale = math.sqrt(MAX_ADABINS_AREA) / math.sqrt(image_pil_area)
+    if image_pil_area > MAX_IMAGE_AREA:
+        scale = math.sqrt(MAX_IMAGE_AREA) / math.sqrt(image_pil_area)
         depth_input = img_pil.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
-    elif image_pil_area < MIN_ADABINS_AREA:
-        scale = math.sqrt(MIN_ADABINS_AREA) / math.sqrt(image_pil_area)
+    elif image_pil_area < MIN_IMAGE_AREA:
+        scale = math.sqrt(MIN_IMAGE_AREA) / math.sqrt(image_pil_area)
         depth_input = img_pil.resize((int(w * scale), int(h * scale)), Image.BICUBIC)
     else:
         depth_input = img_pil

@@ -1,5 +1,4 @@
-
-
+"""Copyright (c) 2026 vecnode"""
 
 import os
 import sys

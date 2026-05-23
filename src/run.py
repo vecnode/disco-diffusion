@@ -71,8 +71,6 @@ def main(cli_overrides: dict | None = None) -> None:
     frames_scale = 1500
     frames_skip_steps = '60%'
 
-    perlin_init = False
-    perlin_mode = 'mixed' # ['mixed', 'color', 'gray']
     set_seed = 'random_seed'
 
     depth_backend = 'marigold'
@@ -146,7 +144,6 @@ def main(cli_overrides: dict | None = None) -> None:
     from geometry import py3d_tools as p3dT
     from geometry import warp as dxf
 
-    from image import noise as _noise
     stop_on_next_loop = False  # Make sure GPU memory doesn't get corrupted from cancelling the run mid-way through, allow a full frame to complete
     TRANSLATION_SCALE = 1.0/200.0
     FORWARD_TRANSLATION_DAMPING = 0.5
@@ -397,8 +394,6 @@ def main(cli_overrides: dict | None = None) -> None:
           # 'zoom_per_frame': zoom_per_frame,
           'frames_scale': frames_scale,
           'frames_skip_steps': frames_skip_steps,
-          'perlin_init': perlin_init,
-          'perlin_mode': perlin_mode,
           'seed': seed,
           'width': width_height[0],
           'height': width_height[1],
@@ -462,7 +457,6 @@ def main(cli_overrides: dict | None = None) -> None:
 
     def _apply_cli_overrides(ov: dict | None) -> None:
         nonlocal latent_guidance_scale
-        nonlocal init_image, init_scale, skip_steps, perlin_init, perlin_mode
         nonlocal set_seed
         nonlocal text_prompts
         nonlocal width_height, side_x, side_y, steps, max_frames
@@ -487,10 +481,6 @@ def main(cli_overrides: dict | None = None) -> None:
             skip_steps = ov["skip_steps"]
         if "steps" in ov:
             steps = ov["steps"]
-        if "perlin_init" in ov:
-            perlin_init = ov["perlin_init"]
-        if "perlin_mode" in ov:
-            perlin_mode = ov["perlin_mode"]
         if "set_seed" in ov:
             set_seed = ov["set_seed"]
         if "max_frames" in ov:
