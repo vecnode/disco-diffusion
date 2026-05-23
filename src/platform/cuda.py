@@ -1,6 +1,6 @@
 """Legacy CUDA helper wrappers.
 
-Prefer src/discodiff/platform/device.py for new device and platform logic.
+Prefer src/platform/device.py for new device and platform logic.
 """
 
 from __future__ import annotations
@@ -59,5 +59,5 @@ def format_cuda_oom_hint() -> str:
     return (
         "\n[CUDA OOM] Try: smaller --width/--height, fewer CLIP models in main.py, lower --cutn / "
         "--cutn-batches, export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True, or set USE_CPU = True "
-        "near the top of src/discodiff/main.py.\n"
+        "near the top of src/run.py.\n"
     )

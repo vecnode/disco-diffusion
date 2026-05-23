@@ -10,7 +10,7 @@ from torch import nn
 import torchvision.transforms as T
 import torchvision.transforms.functional as TF
 
-from ..image.resize import resize
+from image.resize import resize
 
 cutout_debug = False
 padargs: dict = {}

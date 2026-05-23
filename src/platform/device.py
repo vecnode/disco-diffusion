@@ -20,7 +20,7 @@ def warn_if_unsupported_platform() -> None:
     if _truthy(os.environ.get("DISCO_ALLOW_NON_LINUX", "")):
         return
     print(
-        "[discodiff] Supported platform is Linux only; running on "
+        "[run] Supported platform is Linux only; running on "
         f"{sys.platform!r} is untested. Set DISCO_ALLOW_NON_LINUX=1 to hide this warning.",
         file=sys.stderr,
         flush=True,

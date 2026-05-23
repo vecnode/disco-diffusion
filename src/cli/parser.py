@@ -43,7 +43,7 @@ def parse_disco_argv(argv: list[str] | None) -> dict[str, Any]:
     """Return only keys the user set on the command line (no entries → no overrides)."""
     p = argparse.ArgumentParser(
         prog="disco.py",
-        description="Disco Diffusion launcher; omit flags to keep defaults from src/discodiff/main.py.",
+        description="Disco Diffusion launcher; omit flags to keep defaults from src/run.py.",
     )
     p.add_argument("--init-image", type=str, dest="init_image", help="URL/path, or empty for None")
     p.add_argument("--init-scale", type=float, dest="init_scale")

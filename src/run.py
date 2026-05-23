@@ -1,19 +1,19 @@
-"""Diffusion application runtime (notebook-style script body; launched via repo `disco.py`)."""
+"""Diffusion application runtime (notebook-style script body; launched via repo `main.py`)."""
 from __future__ import annotations
 
 def main(cli_overrides: dict | None = None) -> None:
     import os
     import sys
 
-    print("[discodiff] Runtime starting.", flush=True)
+    print("[run] Runtime starting.", flush=True)
 
-    from .platform.device import warn_if_unsupported_platform
+    from platform.device import warn_if_unsupported_platform
 
     warn_if_unsupported_platform()
 
     import shutil
 
-    from .assets import (
+    from assets import (
         createPath,
         fetch,
     )
@@ -27,7 +27,7 @@ def main(cli_overrides: dict | None = None) -> None:
     USE_CPU = False
 
     PROJECT_DIR = os.path.abspath(os.getcwd())
-    from .config import RunConfig, apply_runtime_overrides
+    from config import RunConfig, apply_runtime_overrides
 
     run_config = RunConfig.from_env(ROOT_PATH)
     if cli_overrides:
@@ -95,7 +95,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
 
 
-    from .diffusion import LatentDiffusionBackend
+    from diffusion import LatentDiffusionBackend
 
     # Package helpers (geometry.warp, config.keyframes) — no upstream clone.
     sys.path.append(PROJECT_DIR)
@@ -117,7 +117,7 @@ def main(cli_overrides: dict | None = None) -> None:
     os.chdir(PROJECT_DIR)
     warnings.filterwarnings("ignore", category=UserWarning)
 
-    from .platform.device import apply_backend_defaults, log_device_selection, resolve_runtime_device
+    from platform.device import apply_backend_defaults, log_device_selection, resolve_runtime_device
 
     device_selection = resolve_runtime_device(run_config.device, use_cpu=USE_CPU)
     DEVICE = torch.device(device_selection.torch_device)
@@ -142,11 +142,11 @@ def main(cli_overrides: dict | None = None) -> None:
 
 
 
-    from .geometry import MarigoldDepthBackend
-    from .geometry import py3d_tools as p3dT
-    from .geometry import warp as dxf
+    from geometry import MarigoldDepthBackend
+    from geometry import py3d_tools as p3dT
+    from geometry import warp as dxf
 
-    from .image import noise as _noise
+    from image import noise as _noise
     stop_on_next_loop = False  # Make sure GPU memory doesn't get corrupted from cancelling the run mid-way through, allow a full frame to complete
     TRANSLATION_SCALE = 1.0/200.0
     FORWARD_TRANSLATION_DAMPING = 0.5
@@ -196,7 +196,7 @@ def main(cli_overrides: dict | None = None) -> None:
         return next_step_pil
 
     def do_run():
-            from .platform.cuda import use_cudnn_benchmark_mode
+            from platform.cuda import use_cudnn_benchmark_mode
 
             _cudnn_benchmark = use_cudnn_benchmark_mode()
             seed = args.seed
@@ -565,7 +565,7 @@ def main(cli_overrides: dict | None = None) -> None:
     # `zoom` is a multiplier of dimensions, 1 is no zoom.
     # All rotations are provided in degrees.
 
-    from .config.keyframes import get_inbetweens, parse_key_frames
+    from config.keyframes import get_inbetweens, parse_key_frames
 
 
     if key_frames:
@@ -790,7 +790,7 @@ def main(cli_overrides: dict | None = None) -> None:
         flush=True,
     )
 
-    from .config import build_run_args_namespace
+    from config import build_run_args_namespace
 
     run_config = run_config.with_runtime_values(locals())
     args = build_run_args_namespace(run_config)
@@ -798,7 +798,7 @@ def main(cli_overrides: dict | None = None) -> None:
     print('Prepping model')
     latent_backend = LatentDiffusionBackend(device=device, models_root=model_path)
 
-    from . import main as _main_pub
+    import run as _main_pub
 
     _main_pub.do_run = do_run
 
@@ -807,7 +807,7 @@ def main(cli_overrides: dict | None = None) -> None:
     except KeyboardInterrupt:
         pass
     except RuntimeError as exc:
-        from .platform.cuda import format_cuda_oom_hint
+        from platform.cuda import format_cuda_oom_hint
 
         if DEVICE.type == "cuda" and "out of memory" in str(exc).lower():
             print(format_cuda_oom_hint(), file=sys.stderr)
@@ -820,7 +820,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
 
 
-    from .image.ffmpeg_utils import encode_numbered_png_sequence_h264
+    from image.ffmpeg_utils import encode_numbered_png_sequence_h264
 
     # Create video
     # Video file will save in the same folder as your images.
