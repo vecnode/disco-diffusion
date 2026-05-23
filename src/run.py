@@ -7,7 +7,7 @@ def main(cli_overrides: dict | None = None) -> None:
 
     print("[run] Runtime starting.", flush=True)
 
-    from platform.device import warn_if_unsupported_platform
+    from runtime_platform.device import warn_if_unsupported_platform
 
     warn_if_unsupported_platform()
 
@@ -115,7 +115,7 @@ def main(cli_overrides: dict | None = None) -> None:
     os.chdir(PROJECT_DIR)
     warnings.filterwarnings("ignore", category=UserWarning)
 
-    from platform.device import apply_backend_defaults, log_device_selection, resolve_runtime_device
+    from runtime_platform.device import apply_backend_defaults, log_device_selection, resolve_runtime_device
 
     device_selection = resolve_runtime_device(run_config.device, use_cpu=USE_CPU)
     DEVICE = torch.device(device_selection.torch_device)
@@ -193,7 +193,7 @@ def main(cli_overrides: dict | None = None) -> None:
         return next_step_pil
 
     def do_run():
-            from platform.cuda import use_cudnn_benchmark_mode
+            from runtime_platform.cuda import use_cudnn_benchmark_mode
 
             _cudnn_benchmark = use_cudnn_benchmark_mode()
             seed = args.seed
@@ -797,7 +797,7 @@ def main(cli_overrides: dict | None = None) -> None:
     except KeyboardInterrupt:
         pass
     except RuntimeError as exc:
-        from platform.cuda import format_cuda_oom_hint
+        from runtime_platform.cuda import format_cuda_oom_hint
 
         if DEVICE.type == "cuda" and "out of memory" in str(exc).lower():
             print(format_cuda_oom_hint(), file=sys.stderr)
