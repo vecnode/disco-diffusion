@@ -1,4 +1,4 @@
-# mixed-diffusion
+# Disco Diffusion 2
 
 Under heavy development. 
 
